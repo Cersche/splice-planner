@@ -4,7 +4,10 @@
 
 const STORAGE_KEY = "splicePlanner.plan";
 
-let plan = migratePlan(loadPlan());
+// The app always opens clean on the splash screen. The last plan worked
+// on stays in the browser only as a draft the user can choose to resume.
+let plan = null;
+let draft = migratePlan(loadPlan());
 
 function newPlan(startPoint) {
   return {
@@ -72,6 +75,9 @@ const screens = {
 
 function show(name) {
   for (const [key, el] of Object.entries(screens)) el.hidden = key !== name;
+  // Once a plan is open it replaces the saved draft.
+  if (name === "route") draft = null;
+  if (name === "splash") renderResume();
   if (name === "route") {
     renderRoute();
     // A fresh view: the whole route if it fits readably, else the start.
@@ -888,15 +894,28 @@ function removeStop(id) {
   });
 }
 
-// Resume an in-progress plan, otherwise show the splash. Waits for the
-// other scripts, which the route drawing uses.
+// Offer the last plan as a button on the splash, never open it on its own.
+const resumeBtn = document.getElementById("resume-plan");
+function renderResume() {
+  resumeBtn.hidden = !draft;
+  if (draft) resumeBtn.querySelector("span").textContent = draft.title || draft.points[0]?.name || "last plan";
+}
+resumeBtn.addEventListener("click", () => {
+  if (!draft) return;
+  plan = draft;
+  draft = null;
+  migrateCounts(plan);
+  autoCounts();
+  stampEdit();
+  resetEditBaseline();
+  show("route");
+});
+
+// Always start on the splash. Waits for the other scripts, which the
+// route drawing uses.
 if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 document.addEventListener("DOMContentLoaded", () => {
-  if (plan) {
-    migrateCounts(plan);
-    autoCounts();
-    stampEdit();
-  }
   applyUser();
-  show(plan ? "route" : "splash");
+  renderResume();
+  show("splash");
 });
