@@ -43,6 +43,14 @@ you have signal and it will work offline after that.
    at: tap the chip for its homes by port. **▾** folds everything past a
    location. **Fold all** tucks everything back. The **Find** box at the top finds a lot,
    address, location, terminal, splitter or cable and unfolds the way to it.
+   **Grid** (advanced, off unless you pick it) puts every location in a
+   cell of a grid so the route can grow in any direction: point at a
+   location and a **+** shows on each side; the new location goes that way.
+   **Unlock** (zoom bar) lets you drag locations to other cells. They snap
+   into place, can't sit on top of each other and can't go more than 4
+   cells from what they connect to; **Lock** when done. **Tidy** lays the
+   route out left to right again. Where locations sit in the grid is saved
+   with the plan, so everyone sees the same arrangement.
 4. Tap the **+** beside a location to add the next one after it. It's joined
    by a path (the line); a cable doesn't have to go on it yet.
 5. Tap a line to set its conduit (size, ducts, color, footage) and its cable:

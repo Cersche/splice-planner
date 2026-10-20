@@ -1581,3 +1581,103 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .rt-table tr.flash td { animation: rt-flash 1.6s ease-out; }
 @keyframes rt-flash { from { background: color-mix(in srgb, var(--accent) 45%, var(--card)); } }
 .rt-table tr.past { opacity: 0.55; }
+
+/* --- Grid layout (grid.js): a location in each cell, + on every side --- */
+.grid-board { position: relative; }
+.grid-board.unlocked {
+  background:
+    linear-gradient(to right, color-mix(in srgb, var(--accent) 22%, transparent) 1px, transparent 1px) 0 0 / var(--cell-w) var(--cell-h),
+    linear-gradient(to bottom, color-mix(in srgb, var(--accent) 22%, transparent) 1px, transparent 1px) 0 0 / var(--cell-w) var(--cell-h);
+  outline: 1px dashed color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.grid-cell {
+  position: absolute;
+  width: var(--cell-w);
+  height: var(--cell-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  pointer-events: none;
+}
+.grid-card { position: relative; pointer-events: auto; }
+.grid-cell .stop { max-height: calc(var(--cell-h) - 20px); overflow: hidden; }
+.grid-board.unlocked .grid-cell .stop { cursor: grab; }
+.grid-cell.dragging { z-index: 6; opacity: 0.9; }
+.grid-cell.dragging .stop { cursor: grabbing; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5); }
+.grid-ghost {
+  position: absolute;
+  width: var(--cell-w);
+  height: var(--cell-h);
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text);
+  font-weight: 600;
+  z-index: 5;
+  pointer-events: none;
+}
+.grid-ghost.bad { border-color: #e5484d; background: color-mix(in srgb, #e5484d 14%, transparent); }
+
+.add-dir {
+  position: absolute;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font: inherit;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  border-radius: 7px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+.add-dir:hover { background: var(--accent-2); }
+.add-right { right: -13px; top: 50%; transform: translateY(-50%); }
+.add-left { left: -13px; top: 50%; transform: translateY(-50%); }
+.add-up { top: -13px; left: 50%; transform: translateX(-50%); }
+.add-down { bottom: -13px; left: 50%; transform: translateX(-50%); }
+/* Shown when the pointer is on the location, or (on touch) once it's tapped. */
+.grid-card:hover .add-dir, .grid-card:has(.stop.selected) .add-dir, .grid-card:focus-within .add-dir { opacity: 1; pointer-events: auto; }
+.guest .add-dir { display: none !important; }
+
+.grid-lines { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 0; }
+.grid-wire { fill: none; stroke-width: 4; stroke-linejoin: miter; stroke-linecap: butt; }
+.grid-wire.empty { stroke: var(--line-a) !important; stroke-dasharray: 8 6; stroke-width: 3; }
+.grid-arrow.empty { fill: var(--line-a) !important; }
+.grid-wire.past { opacity: 0.45; }
+.grid-wire.selected { stroke: var(--accent-2) !important; }
+.grid-label {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  gap: 1px;
+  max-width: 150px;
+  padding: 2px 6px;
+  font: inherit;
+  color: var(--text);
+  text-align: center;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+/* Above a line that runs across, beside one that runs up or down. */
+.grid-label.h { transform: translate(-50%, calc(-100% - 5px)); }
+.grid-label.v { transform: translate(8px, -50%); text-align: left; }
+.grid-label .cable-name { font-size: 0.78rem; }
+.grid-label .cable-size { font-size: 0.68rem; }
+.grid-label:hover .cable-name, .grid-label.selected .cable-name { color: var(--accent-2); }
+.zoom-btn.fit .ic { width: 14px; height: 14px; vertical-align: -2px; }
+.zoom-btn.on { background: color-mix(in srgb, var(--accent) 25%, var(--card)); color: var(--text); }
