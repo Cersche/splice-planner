@@ -33,6 +33,13 @@ you have signal and it will work offline after that.
    where you are; tap it to jump.
    Lines are colored by what runs on them: cables red, splitter tails
    blue, terminal tails green, dashed grey where there's no cable yet.
+   A big job opens folded so it fits on screen. Homes wait under their
+   location as a **6 homes ▸** button, and a terminal on a terminal tail
+   (with only homes past it) shows as a chip on the location it's spliced
+   at: tap the chip for its homes by port. **▾** folds everything past a
+   location. **Show all homes** opens everything (long on a big job);
+   **Fold homes** tucks it back. The **Find** box at the top finds a lot,
+   address, location, terminal, splitter or cable and unfolds the way to it.
 4. Tap the **+** beside a location to add the next one after it. It's joined
    by a path (the line); a cable doesn't have to go on it yet.
 5. Tap a line to set its conduit (size, ducts, color, footage) and its cable:

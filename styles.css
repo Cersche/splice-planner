@@ -1453,3 +1453,99 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .tile-label { display: flex; align-items: center; }
 .sheet-head.small { justify-content: flex-start; gap: 20px; }
 .sheet-head.small .sheet-printed { margin-left: auto; }
+
+/* --- Round 7: folding and search --- */
+
+/* Under a card: tail terminals as chips, its homes, and the fold. The
+   tray reads as part of the card. */
+.stop-wrap.has-tray { flex-direction: column; align-items: stretch; }
+.stop-wrap.has-tray > .stop { border-bottom-left-radius: 0; border-bottom-right-radius: 0; box-shadow: none; }
+.stop-tray {
+  width: 200px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: -1px;
+  padding: 6px 8px 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-top-style: dashed;
+  border-radius: 0 0 10px 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+.spot-chip, .tray-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  line-height: 1.3;
+  color: #cfdbe7;
+  background: var(--card-2);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.spot-chip:hover, .tray-btn:hover { border-color: var(--accent); }
+.spot-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--wire, #35b27c); }
+.spot-chip .n { color: var(--muted); }
+.tray-btn { font-family: var(--sans); font-size: 0.75rem; color: #bcdcfb; background: color-mix(in srgb, var(--accent) 18%, var(--card)); }
+.tray-btn.fold { margin-left: auto; min-width: 26px; justify-content: center; color: var(--muted); background: var(--card-2); }
+.tray-btn.fold.folded { margin-left: 0; color: #bcdcfb; background: color-mix(in srgb, var(--accent) 18%, var(--card)); }
+
+/* Search in the top bar */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.route-search { position: relative; flex: 0 1 280px; min-width: 180px; }
+.route-search input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 38px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 0.92rem;
+  color: var(--text);
+  background: var(--card-2);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+}
+.route-search input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.search-results {
+  position: absolute;
+  z-index: 12;
+  left: 0;
+  top: calc(100% + 4px);
+  width: max(100%, 320px);
+  max-height: 60vh;
+  overflow: auto;
+  padding: 4px;
+  background: var(--card);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+.search-hit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.search-hit svg.ic { width: 20px; height: 20px; flex: 0 0 auto; color: var(--muted); }
+.search-hit:hover, .search-hit.on { background: var(--card-2); }
+.search-words { display: flex; flex-direction: column; min-width: 0; }
+.search-text { font-weight: 600; font-size: 0.92rem; }
+.search-sub { font-size: 0.78rem; color: var(--muted); }
+.search-none { margin: 8px; color: var(--muted); font-size: 0.9rem; }
+@media (max-width: 640px) {
+  .route-search { flex: 1 1 100%; order: 5; }
+}

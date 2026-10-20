@@ -191,7 +191,7 @@ function buildSpliceModel() {
     const byItem = new Map([...inMap].map(([n, it]) => [it, n]));
     for (const s of here) {
       const from = s.f2 && c && s.f2 <= c.fibers ? fiberLabel(cableStart(c), s.f2) : source(L, `split-in:${s.id}`);
-      rows.push({ from, to: { text: `${s.name} input`, colors: "" }, note: s.f2 ? f2Text(s.f2) : "F2 not set", key: `split:${s.id}:in`,
+      rows.push({ from, to: { text: `${s.name} input`, colors: "" }, note: f2Label(s), key: `split:${s.id}:in`,
         phase: Math.max(phaseIdx(s), c ? phaseIdx(c) : 0),
         src: s.f2 && c && s.f2 <= c.fibers ? { kind: "fiber", n: s.f2 } : null, dst: { kind: "split", id: s.id } });
     }

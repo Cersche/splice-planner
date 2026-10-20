@@ -7,7 +7,7 @@ const routeView = document.getElementById("route-view");
 const minimap = document.getElementById("minimap");
 const zoomLabel = document.getElementById("zoom-reset");
 
-const ZOOM_MIN = 0.15;
+const ZOOM_MIN = 0.03;
 const ZOOM_MAX = 2;
 const view = { z: 1, x: 24, y: 24 };
 

@@ -14,7 +14,7 @@ function hasCards(eq) {
 }
 
 function equipmentLabel(eq) {
-  if (eq.type === "splitter") return eq.f2 ? `${eq.name} · ${f2Text(eq.f2)}` : eq.name;
+  if (eq.type === "splitter") return eq.f2 ? `${eq.name} · ${f2Label(eq)}` : eq.name;
   if (hasCards(eq)) {
     return `${eq.name} · ${eq.cards.length} ${eq.cards.length === 1 ? "card" : "cards"}, ${cardPorts(eq)} ports`;
   }
@@ -24,7 +24,7 @@ function equipmentLabel(eq) {
 
 // Short form for the chips on a location card.
 function equipmentChip(eq) {
-  if (eq.type === "splitter") return `${eq.ratio}${eq.f2 ? ` · ${f2Text(eq.f2)}` : ""}`;
+  if (eq.type === "splitter") return `${eq.ratio}${eq.f2 ? ` · ${f2Label(eq)}` : ""}`;
   if (hasCards(eq)) return `${eq.name} · ${cardPorts(eq)}p`;
   if (eq.type === "closure") return `${eq.name} · ${eq.trays * eq.slots}sp`;
   return eq.name;
@@ -83,7 +83,7 @@ function openEquipment(locId, startKind) {
           renderRoute();
           renderList();
         });
-        const view = el("span", "auto-val mono", eq.f2 ? f2Text(eq.f2) : "no free fiber");
+        const view = el("span", "auto-val mono", eq.f2 ? f2Label(eq) : "no free fiber");
         const f2Row = el("span", "inline-field");
         f2Row.append(el("span", "", "F2"), lockField(!eq.f2Manual, view, sel, (lock) => {
           eq.f2Manual = !lock;
@@ -91,7 +91,7 @@ function openEquipment(locId, startKind) {
           renderRoute();
           renderList();
         }, "the F2 count"));
-        const note = el("span", "field-hint", eq.f2 ? f2Hint(p, eq.f2) : "F2 not set");
+        const note = el("span", "field-hint", eq.f2 ? f2Hint(p, eq) : "F2 not set");
         row.append(f2Row, el("span", "eq-meta mono", `DS ${usedPorts(eq).size}/${splitterPorts(eq)}`), note);
       }
       if (eq.type === "closure") {
@@ -270,11 +270,15 @@ function openEquipment(locId, startKind) {
 }
 
 // "Fiber 5 on Cable 1: Blue tube, Slate fiber."
-function f2Hint(loc, n) {
+function f2Hint(loc, eq) {
   const c = incomingCable(loc.id);
   if (!c) return `No cable arrives at ${loc.name}, so F2 is just a number here.`;
-  const f = colorCode(c.fibers)[n - 1];
-  return f ? `${c.name} #${n}: ${f.tubeColor.name} tube, ${f.fiberColor.name} fiber.` : "";
+  const f = colorCode(c.fibers)[eq.f2 - 1];
+  if (!f) return "";
+  const here = `${c.name} #${eq.f2}: ${f.tubeColor.name} tube, ${f.fiberColor.name} fiber.`;
+  // A terminal tail: say where it's spliced on the way back.
+  const src = f2Source(eq);
+  return src && src.traced ? `${here} Spliced to ${src.cable.name} #${src.n} upstream.` : here;
 }
 
 // --- Card and port editor (shelves, panels, terminals) ---
