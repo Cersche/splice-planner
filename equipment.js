@@ -1,42 +1,32 @@
-// Equipment at a location: splitters (added several at a time, each with
-// its F2 count), shelves started from a template and then cut down or
-// renamed, and anything else. Also each location's details and the
-// cross-connects (patches) at a cabinet.
+// Equipment at a location, from the stock templates in catalog.js:
+// OLT shelves, patch panels, splice cases, terminals and splitters
+// (several at a time, each on its own F2), plus anything else. Which
+// kinds are offered depends on the location type. Also each location's
+// details.
 
-// Starting points only: port counts are from datasheets and press, not
-// from any one crew's gear. Rename, add or remove cards and ports after.
-const SHELF_TEMPLATES = [
-  { id: "e7-gpon8", group: "Calix OLT", label: "Calix E7-2, GPON-8 cards", model: "Calix E7-2", cards: 2, card: "GPON-8", ports: 8, port: "PON" },
-  { id: "e7-gpon8r2", group: "Calix OLT", label: "Calix E7-2, GPON-8 r2 cards", model: "Calix E7-2", cards: 2, card: "GPON-8 r2", ports: 8, port: "PON" },
-  { id: "e7-xg801", group: "Calix OLT", label: "Calix E7-2, XG801 cards", model: "Calix E7-2", cards: 2, card: "XG801", ports: 8, port: "PON" },
-  { id: "e9-ng1601", group: "Calix OLT", label: "Calix E9-2, NG1601 cards", model: "Calix E9-2", cards: 2, card: "NG1601", ports: 16, port: "PON" },
-  { id: "e9-gp1611", group: "Calix OLT", label: "Calix E9-2, GP1611 cards", model: "Calix E9-2", cards: 2, card: "GP1611", ports: 16, port: "PON" },
-  { id: "clearfield-144", group: "FDH / splitter cabinet", label: "Clearfield FieldSmart FDH, 144 ports", model: "Clearfield FieldSmart FDH", cards: 12, card: "Cassette", ports: 12 },
-  { id: "commscope-288", group: "FDH / splitter cabinet", label: "CommScope FDH 3000, 288F", model: "CommScope FDH 3000", cards: 24, card: "Panel", ports: 12 },
-  { id: "commscope-432", group: "FDH / splitter cabinet", label: "CommScope FDH 3000, 432F", model: "CommScope FDH 3000", cards: 36, card: "Panel", ports: 12 },
-  { id: "optitect-288", group: "FDH / splitter cabinet", label: "Corning OptiTect, 288F", model: "Corning OptiTect", cards: 24, card: "Panel", ports: 12 },
-  { id: "blank", group: "Other", label: "Blank shelf (1 card, 12 ports)", model: "", cards: 1, card: "Card", ports: 12 },
-];
-
-function shelfFromTemplate(t, name) {
-  const cards = [];
-  for (let i = 1; i <= t.cards; i++) {
-    const ports = [];
-    for (let n = 1; n <= t.ports; n++) ports.push({ id: makeId(), name: t.port ? `${t.port} ${n}` : String(n) });
-    cards.push({ id: makeId(), name: t.cards > 1 ? `${t.card} ${i}` : t.card, ports });
-  }
-  return { id: makeId(), type: "shelf", name, model: t.model, cards };
+// Ports on a card-based item (shelf, panel, terminal).
+function cardPorts(eq) {
+  return (eq.cards || []).reduce((n, c) => n + c.ports.length, 0);
 }
 
-function shelfPorts(eq) {
-  return eq.cards.reduce((n, c) => n + c.ports.length, 0);
+function hasCards(eq) {
+  return Array.isArray(eq.cards);
 }
 
 function equipmentLabel(eq) {
   if (eq.type === "splitter") return eq.f2 ? `${eq.name} · F2 ${eq.f2}` : eq.name;
-  if (eq.type === "shelf") {
-    return `${eq.name} · ${eq.cards.length} card${eq.cards.length === 1 ? "" : "s"}, ${shelfPorts(eq)} ports`;
+  if (hasCards(eq)) {
+    return `${eq.name} · ${eq.cards.length} ${eq.cards.length === 1 ? "card" : "cards"}, ${cardPorts(eq)} ports`;
   }
+  if (eq.type === "closure") return `${eq.name} · ${eq.trays} trays x ${eq.slots}`;
+  return eq.name;
+}
+
+// Short form for the chips on a location card.
+function equipmentChip(eq) {
+  if (eq.type === "splitter") return `${eq.ratio}${eq.f2 ? ` · F2 ${eq.f2}` : ""}`;
+  if (hasCards(eq)) return `${eq.name} · ${cardPorts(eq)}p`;
+  if (eq.type === "closure") return `${eq.name} · ${eq.trays * eq.slots}sp`;
   return eq.name;
 }
 
@@ -58,8 +48,13 @@ function openEquipment(locId) {
 
     function eqRow(eq) {
       const row = el("div", "eq-row");
-      const title = el("div", "eq-name", eq.type === "splitter" ? `${eq.name}` : equipmentLabel(eq));
-      row.append(title);
+      const pic = el("span", "eq-icon");
+      pic.append(iconEl((EQ_KINDS[eq.type] || EQ_KINDS.other).icon));
+      const title = el("div", "eq-name", eq.name);
+      const sub = el("div", "eq-meta", [eq.model, eq.style, eq.type === "splitter" ? eq.ratio : ""].filter(Boolean).join(" · "));
+      const text = el("div", "eq-text");
+      text.append(title, sub);
+      row.append(pic, text);
       if (eq.type === "splitter") {
         const f2 = inputEl("number", eq.f2 || "", { min: 1, placeholder: "not set" });
         const note = el("span", "field-hint");
@@ -78,11 +73,29 @@ function openEquipment(locId) {
         });
         const f2Row = el("label", "inline-field");
         f2Row.append(el("span", "", "F2"), f2);
-        row.append(f2Row, el("span", "eq-meta", `DS used ${usedPorts(eq).size} of ${splitterPorts(eq)}`), note);
+        row.append(f2Row, el("span", "eq-meta mono", `DS ${usedPorts(eq).size}/${splitterPorts(eq)}`), note);
         check();
       }
+      if (eq.type === "closure") {
+        const trays = inputEl("number", eq.trays, { min: 1, max: 48 });
+        const slots = inputEl("number", eq.slots, { min: 1, max: 48 });
+        const save = () => {
+          eq.trays = Math.max(1, Number(trays.value) || 1);
+          eq.slots = Math.max(1, Number(slots.value) || 1);
+          savePlan();
+          renderRoute();
+        };
+        trays.addEventListener("change", save);
+        slots.addEventListener("change", save);
+        const a = el("label", "inline-field");
+        a.append(el("span", "", "Trays"), trays);
+        const b = el("label", "inline-field");
+        b.append(el("span", "", "Splices / tray"), slots);
+        row.append(a, b);
+      }
       const actions = el("div", "eq-actions");
-      if (eq.type === "shelf") actions.append(btnEl("Edit cards and ports", () => openShelf(locId, eq.id), "btn ghost"));
+      if (hasCards(eq)) actions.append(btnEl("Edit cards and ports", () => openCards(locId, eq.id), "btn ghost"));
+      if (eq.type === "closure") actions.append(btnEl("Open splice case", () => openConnections(locId), "btn ghost"));
       actions.append(btnEl("Remove", () => {
         const onIt = plan.points.filter((h) => h.ds && h.ds.splitterId === eq.id);
         const msg = onIt.length
@@ -91,7 +104,7 @@ function openEquipment(locId) {
         if (!confirm(msg)) return;
         p.equipment = p.equipment.filter((x) => x.id !== eq.id);
         for (const h of onIt) delete h.ds;
-        plan.xconnects = plan.xconnects.filter((x) => !endpointOn(x.a, eq.id) && !endpointOn(x.b, eq.id));
+        dropEquipmentLinks(eq.id);
         savePlan();
         renderList();
         renderRoute();
@@ -100,40 +113,52 @@ function openEquipment(locId) {
       return row;
     }
 
-    // Add form: one dropdown for the kind, then just its own fields.
+    // Add form: the kind, then a template (with a picture) or splitter size.
     body.append(el("h4", "form-section", "Add equipment"));
-    const kind = selectEl([
-      { value: "splitter", label: "Splitter" },
-      { value: "shelf", label: "Shelf / chassis (from a template)" },
-      { value: "other", label: "Other" },
-    ], "splitter");
-    body.append(fieldEl("Kind", kind));
+    const kinds = kindsFor(p);
+    const kind = selectEl(kinds.map((k) => ({ value: k, label: EQ_KINDS[k].label })), kinds[0]);
+    const addGrid = el("div", "add-grid");
+    const fields = el("div");
+    const picBox = el("div", "pic-box");
+    addGrid.append(fields, picBox);
+    body.append(fieldEl("Kind", kind), addGrid);
 
-    const splitBox = el("div", "form-grid");
+    const template = selectEl([]);
+    const name = inputEl("text", "");
+    let nameTouched = false;
+    name.addEventListener("input", () => (nameTouched = true));
     const ratio = selectEl(SPLITTER_RATIOS.map((r) => ({ value: r, label: r })), "1x32");
     const qty = inputEl("number", 1, { min: 1, max: 48 });
     const first = inputEl("number", nextFreeF2(p, { id: null }) || "", { min: 1 });
-    splitBox.append(fieldEl("Size", ratio), fieldEl("How many", qty), fieldEl("First F2", first, "Each splitter gets the next free fiber."));
-    const splitNote = el("p", "hint");
-
-    const shelfBox = el("div", "form-grid");
-    const template = selectEl(SHELF_TEMPLATES.map((t) => ({ value: t.id, label: t.label, group: t.group })), SHELF_TEMPLATES[0].id);
-    const shelfName = inputEl("text", SHELF_TEMPLATES[0].model);
-    template.addEventListener("change", () => {
-      const t = SHELF_TEMPLATES.find((x) => x.id === template.value);
-      shelfName.value = t.model || "Shelf";
-    });
-    shelfBox.append(fieldEl("Template", template), fieldEl("Name", shelfName));
-    const shelfNote = el("p", "hint", "Templates are a starting point. Check the cards and ports against your gear, then edit them.");
-
-    const otherBox = el("div", "form-grid");
-    const otherName = inputEl("text", "", { placeholder: "e.g. Patch panel" });
-    otherBox.append(fieldEl("Name", otherName));
-
+    const note = el("p", "hint");
     const addError = el("p", "error");
     addError.hidden = true;
     const add = btnEl("Add", addEquipment, "btn");
-    body.append(splitBox, splitNote, shelfBox, shelfNote, otherBox, addError, add);
+
+    function tmpl() {
+      return templateById(template.value);
+    }
+
+    function renderFields() {
+      fields.innerHTML = "";
+      const k = kind.value;
+      const list = templatesFor(k);
+      if (list.length) {
+        template.replaceChildren(...selectEl(list.map((t) => ({ value: t.id, label: t.label, group: t.group }))).childNodes);
+        template.value = list[0].id;
+        fields.append(fieldEl(k === "splitter" ? "Style" : "Template", template));
+      }
+      if (k === "splitter") {
+        const g = el("div", "form-grid");
+        g.append(fieldEl("Size", ratio), fieldEl("How many", qty), fieldEl("First F2", first, "Each gets the next free fiber."));
+        fields.append(g);
+      } else {
+        fields.append(fieldEl("Name", name));
+        nameTouched = false;
+      }
+      fields.append(note, addError, add);
+      refresh();
+    }
 
     function plannedF2() {
       const n = Math.max(1, Math.min(48, Number(qty.value) || 1));
@@ -149,45 +174,58 @@ function openEquipment(locId) {
     }
 
     function refresh() {
-      splitBox.hidden = splitNote.hidden = kind.value !== "splitter";
-      shelfBox.hidden = shelfNote.hidden = kind.value !== "shelf";
-      otherBox.hidden = kind.value !== "other";
       addError.hidden = true;
-      if (kind.value === "splitter") {
-        const plan2 = plannedF2();
-        splitNote.className = plan2.error ? "error" : "hint";
-        splitNote.textContent = plan2.error ? plan2.error : plan2.list.length
-          ? `Adds ${plan2.n} x ${ratio.value} on F2 ${plan2.list.join(", ")}.`
-          : `Adds ${plan2.n} x ${ratio.value} with no F2 yet.`;
+      const k = kind.value;
+      const t = tmpl();
+      picBox.replaceChildren(hardwarePicture(k, t));
+      if (t && t.kind === k && !nameTouched && k !== "splitter") name.value = t.model || EQ_KINDS[k].label;
+      if (k === "other" && !nameTouched) name.value = "";
+      if (k === "splitter") {
+        const planned = plannedF2();
+        note.className = planned.error ? "error" : "hint";
+        note.textContent = planned.error ? planned.error : planned.list.length
+          ? `Adds ${planned.n} x ${ratio.value} on F2 ${planned.list.join(", ")}.`
+          : `Adds ${planned.n} x ${ratio.value} with no F2 yet.`;
+      } else if (k === "other") {
+        note.textContent = "";
+      } else {
+        note.className = "hint";
+        note.textContent = "Templates are a starting point. Check them against your gear, then edit.";
       }
     }
-    [kind, ratio, qty, first].forEach((x) => x.addEventListener("input", refresh));
-    refresh();
+    kind.addEventListener("change", renderFields);
+    [template, ratio, qty, first].forEach((x) => x.addEventListener("input", refresh));
+    renderFields();
 
     function addEquipment() {
-      if (kind.value === "splitter") {
+      const k = kind.value;
+      if (k === "splitter") {
         const planned = plannedF2();
         if (planned.error) return;
-        let k = splittersAt(p).length;
+        const t = tmpl();
+        let n = splittersAt(p).length;
         for (let i = 0; i < planned.n; i++) {
-          p.equipment.push({ id: makeId(), type: "splitter", ratio: ratio.value, name: `Splitter ${++k} (${ratio.value})`, f2: planned.list[i] || null });
+          p.equipment.push({ id: makeId(), type: "splitter", ratio: ratio.value, style: t.style,
+            name: `Splitter ${++n} (${ratio.value})`, f2: planned.list[i] || null });
         }
         first.value = nextFreeF2(p, { id: null }) || "";
-      } else if (kind.value === "shelf") {
-        const t = SHELF_TEMPLATES.find((x) => x.id === template.value);
-        const shelf = shelfFromTemplate(t, shelfName.value.trim() || t.model || "Shelf");
-        p.equipment.push(shelf);
-        savePlan();
-        return openShelf(locId, shelf.id);
-      } else {
-        if (!otherName.value.trim()) {
+      } else if (k === "other") {
+        if (!name.value.trim()) {
           addError.textContent = "Name the equipment.";
           addError.hidden = false;
           return;
         }
-        p.equipment.push({ id: makeId(), type: "other", name: otherName.value.trim() });
-        otherName.value = "";
+        p.equipment.push({ id: makeId(), type: "other", name: name.value.trim() });
+      } else {
+        const t = tmpl();
+        const item = fromTemplate(t, name.value.trim() || t.model || EQ_KINDS[k].label);
+        p.equipment.push(item);
+        if (hasCards(item)) {
+          savePlan();
+          return openCards(locId, item.id);
+        }
       }
+      nameTouched = false;
       savePlan();
       renderList();
       refresh();
@@ -208,9 +246,9 @@ function f2Hint(loc, n) {
   return f ? `${c.name} #${n}: ${f.tubeColor.name} tube, ${f.fiberColor.name} fiber.` : "";
 }
 
-// --- Shelf editor ---
+// --- Card and port editor (shelves, panels, terminals) ---
 
-function openShelf(locId, eqId) {
+function openCards(locId, eqId) {
   const p = point(locId);
   const eq = p.equipment.find((x) => x.id === eqId);
   const changed = () => {
@@ -376,191 +414,4 @@ function openDetails(locId) {
   }, true);
   selectedId = locId;
   renderRoute();
-}
-
-// --- Cross-connects ---
-// A patch joins two endpoints at one location:
-//   port:<shelf>:<port>     a port on a shelf
-//   split:<splitter>:in     a splitter input, split:<splitter>:<n> an output
-//   fiber:<cable>:<n>       a fiber on a cable starting or ending here
-
-function showsCrossConnects(p) {
-  return p.type === "cabinet" || (p.equipment || []).some((e) => e.type === "shelf") || crossConnectsAt(p.id).length > 0;
-}
-
-function crossConnectsAt(locId) {
-  return plan.xconnects.filter((x) => x.at === locId);
-}
-
-function crossConnectFor(key) {
-  const x = plan.xconnects.find((y) => y.a === key || y.b === key);
-  return x ? { x, other: x.a === key ? x.b : x.a } : null;
-}
-
-function endpointOn(key, eqId) {
-  return key.startsWith(`port:${eqId}:`) || key.startsWith(`split:${eqId}:`);
-}
-
-function findEquipment(eqId) {
-  for (const p of plan.points) for (const e of p.equipment || []) if (e.id === eqId) return e;
-  return null;
-}
-
-// Endpoints at a location, for the dropdowns.
-function endpointsAt(locId) {
-  const p = point(locId);
-  const out = [];
-  for (const eq of p.equipment || []) {
-    if (eq.type === "shelf") {
-      for (const card of eq.cards) for (const port of card.ports) {
-        out.push({ value: `port:${eq.id}:${port.id}`, label: `${card.name}, port ${port.name}`, group: eq.name });
-      }
-    }
-    if (eq.type === "splitter") {
-      out.push({ value: `split:${eq.id}:in`, label: "Input", group: eq.name });
-      for (let n = 1; n <= splitterPorts(eq); n++) out.push({ value: `split:${eq.id}:${n}`, label: `Output ${n}`, group: eq.name });
-    }
-  }
-  const fibersOf = (c, where) => {
-    const code = colorCode(c.fibers);
-    for (const f of code) {
-      out.push({ value: `fiber:${c.id}:${f.number}`, label: `#${f.number} ${tubeCount(c.fibers) > 1 ? f.tubeColor.name + " tube, " : ""}${f.fiberColor.name}`,
-        group: `${c.name} (${where})` });
-    }
-  };
-  const arriving = incomingCable(locId);
-  if (arriving) fibersOf(cableStart(arriving), "incoming");
-  for (const d of childCables(locId).filter((x) => !x.through)) fibersOf(d, "outgoing");
-  return out;
-}
-
-function endpointLabel(key) {
-  const [kind, id, sub] = key.split(":");
-  if (kind === "fiber") {
-    const c = plan.cables.find((x) => x.id === id);
-    if (!c || Number(sub) > c.fibers) return "(removed fiber)";
-    const f = colorCode(c.fibers)[Number(sub) - 1];
-    return `${c.name} #${sub} (${tubeCount(c.fibers) > 1 ? f.tubeColor.name + " tube, " : ""}${f.fiberColor.name})`;
-  }
-  const eq = findEquipment(id);
-  if (!eq) return "(removed equipment)";
-  if (kind === "split") return `${eq.name} ${sub === "in" ? "input" : `output ${sub}`}`;
-  for (const card of eq.cards || []) {
-    const port = card.ports.find((x) => x.id === sub);
-    if (port) return `${eq.name}, ${card.name}, port ${port.name}`;
-  }
-  return "(removed port)";
-}
-
-function endpointMissing(key) {
-  return endpointLabel(key).startsWith("(removed");
-}
-
-function openCrossConnects(locId) {
-  const p = point(locId);
-  openForm(`Cross-connects at ${p.name}`, (body, foot) => {
-    body.append(el("p", "hint", "Patch equipment ports, splitters and fibers to each other. They print with this location's splice sheet."));
-    const listEl = el("div");
-    body.append(listEl);
-    renderList();
-
-    function renderList() {
-      listEl.innerHTML = "";
-      const list = crossConnectsAt(locId);
-      if (!list.length) {
-        listEl.append(el("p", "hint", "No cross-connects yet."));
-        return;
-      }
-      const table = el("table", "sheet-table");
-      const head = el("tr");
-      for (const h of ["From", "To", "Note", ""]) head.append(el("th", "", h));
-      table.append(head);
-      for (const x of list) {
-        const tr = el("tr");
-        const del = el("td");
-        del.append(btnEl("Remove", () => {
-          plan.xconnects = plan.xconnects.filter((y) => y !== x);
-          savePlan();
-          renderList();
-          refresh();
-        }, "btn ghost small danger"));
-        tr.append(el("td", "", endpointLabel(x.a)), el("td", "", endpointLabel(x.b)), el("td", "", x.note || ""), del);
-        table.append(tr);
-      }
-      listEl.append(table);
-    }
-
-    body.append(el("h4", "form-section", "Add a cross-connect"));
-    const ends = endpointsAt(locId);
-    if (!ends.length) {
-      body.append(el("p", "hint", "Add a shelf or splitter, or a cable to or from here, to have something to patch."));
-    }
-    const a = selectEl([]);
-    const b = selectEl([]);
-    const note = inputEl("text", "", { placeholder: "optional" });
-    const grid = el("div", "form-grid");
-    grid.append(fieldEl("From", a), fieldEl("To", b), fieldEl("Note", note));
-    const addError = el("p", "error");
-    addError.hidden = true;
-    body.append(grid, addError, btnEl("Add cross-connect", add, "btn"));
-    refresh();
-
-    // Endpoints already patched are shown but can't be picked again.
-    function refresh() {
-      const used = new Set(plan.xconnects.flatMap((x) => [x.a, x.b]));
-      const opts = ends.map((o) => ({ ...o, disabled: used.has(o.value), label: used.has(o.value) ? `${o.label} (patched)` : o.label }));
-      for (const s of [a, b]) {
-        const keep = s.value;
-        s.replaceChildren(...selectEl(opts).childNodes);
-        const first = opts.find((o) => !o.disabled && (s === a || o.value !== a.value));
-        s.value = keep && !used.has(keep) ? keep : first ? first.value : "";
-      }
-      if (b.value === a.value) {
-        const next = opts.find((o) => !o.disabled && o.value !== a.value);
-        if (next) b.value = next.value;
-      }
-    }
-
-    function add() {
-      addError.hidden = true;
-      if (!a.value || !b.value) return;
-      if (a.value === b.value) {
-        addError.textContent = "From and To are the same.";
-        addError.hidden = false;
-        return;
-      }
-      plan.xconnects.push({ id: makeId(), at: locId, a: a.value, b: b.value, note: note.value.trim() });
-      note.value = "";
-      savePlan();
-      renderList();
-      refresh();
-    }
-
-    foot.append(btnEl("Done", finish, "btn big"));
-  }, true);
-  selectedId = locId;
-  renderRoute();
-}
-
-// The cross-connects at a location as a table, for splice sheets.
-function crossConnectTable(locId) {
-  const list = crossConnectsAt(locId);
-  if (!list.length) return null;
-  const wrap = el("div", "xc-block");
-  wrap.append(el("h4", "", "Cross-connects"));
-  const table = el("table", "sheet-table splice-table");
-  const head = el("tr");
-  for (const h of ["From", "", "To", "Note", "Done"]) head.append(el("th", "", h));
-  const thead = el("thead");
-  thead.append(head);
-  table.append(thead);
-  for (const x of list) {
-    const tr = el("tr");
-    if (endpointMissing(x.a) || endpointMissing(x.b)) tr.className = "problem";
-    tr.append(el("td", "strong", endpointLabel(x.a)), el("td", "", "⇄"), el("td", "strong", endpointLabel(x.b)),
-      el("td", "", x.note || ""), el("td", "checkbox-cell", "☐"));
-    table.append(tr);
-  }
-  wrap.append(table);
-  return wrap;
 }

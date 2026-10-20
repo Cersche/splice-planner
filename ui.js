@@ -99,6 +99,7 @@ function openForm(title, build, wide) {
   closePanels();
   closeMenu();
   formPanel.classList.toggle("wide", !!wide);
+  formPanel.classList.remove("cx-panel");
   formTitle.textContent = title;
   formBody.innerHTML = "";
   formFoot.innerHTML = "";

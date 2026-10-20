@@ -214,3 +214,126 @@ document.getElementById("counts-done").addEventListener("click", () => {
   selectedId = null;
   renderRoute();
 });
+
+// --- Counts for many homes at once ---
+
+// Homes fed by the splitters at a location, in route order.
+function homesFedBy(p) {
+  const order = [];
+  const walk = (id) => {
+    for (const path of plan.paths.filter((x) => x.from === id)) {
+      const m = point(path.to);
+      if (!m) continue;
+      if (m.type === "nid") {
+        if (feedingLocation(id) === p) order.push(m);
+      } else if (!splittersAt(m).length) walk(m.id);
+    }
+  };
+  walk(p.id);
+  return order;
+}
+
+function feedsHomes(p) {
+  return splittersAt(p).length > 0 && homesFedBy(p).length > 0;
+}
+
+// Tick homes, pick a splitter and a first port, and give each ticked home
+// the next free port in order.
+function openBatchCounts(locId) {
+  const L = point(locId);
+  const ticked = new Set();
+  openForm(`Home counts at ${L.name}`, (body, foot) => {
+    const list = splittersAt(L);
+    const sSel = selectEl(list.map((s) => ({ value: s.id, label: equipmentLabel(s) })));
+    const start = inputEl("number", 1, { min: 1 });
+    const skip = inputEl("checkbox");
+    skip.checked = true;
+    const table = el("div", "batch-list");
+    const tools = el("div", "batch-tools");
+    body.append(el("p", "hint", "Tick the homes to number, choose the splitter and its first port, then fill. Homes get ports in the order shown."),
+      fieldEl("Splitter", sSel), fieldEl("Start at port", start));
+    const skipRow = el("label", "check-row");
+    skipRow.append(skip, el("span", "", "Skip ports already taken by other homes"));
+    body.append(skipRow, tools, table);
+
+    const homes = () => homesFedBy(L);
+    function render() {
+      const s = list.find((x) => x.id === sSel.value);
+      start.max = splitterPorts(s);
+      table.innerHTML = "";
+      const head = el("div", "batch-row head");
+      const all = inputEl("checkbox");
+      all.checked = homes().length > 0 && homes().every((h) => ticked.has(h.id));
+      all.addEventListener("change", () => {
+        for (const h of homes()) all.checked ? ticked.add(h.id) : ticked.delete(h.id);
+        render();
+      });
+      head.append(all, el("span", "", "Home"), el("span", "", "Lot"), el("span", "mono", "F2"), el("span", "mono", "DS"));
+      table.append(head);
+      for (const h of homes()) {
+        const row = el("label", "batch-row" + (ticked.has(h.id) ? " on" : ""));
+        const box = inputEl("checkbox");
+        box.checked = ticked.has(h.id);
+        box.addEventListener("change", () => {
+          box.checked ? ticked.add(h.id) : ticked.delete(h.id);
+          row.classList.toggle("on", box.checked);
+        });
+        const hs = homeSplitter(h);
+        const f2 = hs && hs.f2 ? String(hs.f2) : "–";
+        const ds = h.ds ? `${list.length > 1 ? findEquipment(h.ds.splitterId).name + " " : ""}${h.ds.port}` : "–";
+        row.append(box, el("span", "", h.name), el("span", "", h.lot || ""), el("span", "mono", f2), el("span", "mono", ds));
+        table.append(row);
+      }
+    }
+
+    function fill() {
+      const s = list.find((x) => x.id === sSel.value);
+      const chosen = homes().filter((h) => ticked.has(h.id));
+      if (!chosen.length) return "Tick at least one home.";
+      const max = splitterPorts(s);
+      let n = Number(start.value);
+      if (!Number.isInteger(n) || n < 1 || n > max) return `${s.name} has ports 1 to ${max}.`;
+      const chosenIds = new Set(chosen.map((h) => h.id));
+      const taken = new Set([...usedPorts(s)].filter(([, h]) => !chosenIds.has(h.id)).map(([p]) => p));
+      const plan2 = [];
+      for (const h of chosen) {
+        while (n <= max && skip.checked && taken.has(n)) n++;
+        if (n > max) return `${s.name} runs out of ports after ${plan2.length} home${plan2.length === 1 ? "" : "s"}. Start lower, untick some homes, or add a bigger splitter.`;
+        if (!skip.checked && taken.has(n)) return `Port ${n} is already taken by ${usedPorts(s).get(n).name}.`;
+        plan2.push([h, n++]);
+      }
+      for (const [h, port] of plan2) h.ds = { splitterId: s.id, port };
+      savePlan();
+      renderRoute();
+      render();
+      formError.hidden = true;
+      return "";
+    }
+
+    tools.append(btnEl("Tick all", () => {
+      for (const h of homes()) ticked.add(h.id);
+      render();
+    }, "btn ghost"), btnEl("Tick homes without DS", () => {
+      for (const h of homes()) if (!h.ds) ticked.add(h.id);
+      render();
+    }, "btn ghost"), btnEl("Clear DS on ticked", () => {
+      const chosen = homes().filter((h) => ticked.has(h.id));
+      if (!chosen.length) return;
+      if (!confirm(`Clear the DS count on ${chosen.length} home${chosen.length === 1 ? "" : "s"}?`)) return;
+      for (const h of chosen) delete h.ds;
+      savePlan();
+      renderRoute();
+      render();
+    }, "btn ghost danger"));
+    sSel.addEventListener("change", render);
+    render();
+
+    foot.append(btnEl("Done", finish, "btn ghost"), btnEl("Fill DS in order", () => {
+      const problem = fill();
+      formError.hidden = !problem;
+      if (problem) formError.textContent = problem;
+    }, "btn big"));
+  });
+  selectedId = locId;
+  renderRoute();
+}

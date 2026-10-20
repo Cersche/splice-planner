@@ -4,10 +4,6 @@
 
 const STORAGE_KEY = "splicePlanner.plan";
 
-const START_TYPES = {
-  cabinet: "Cabinet",
-};
-
 let plan = migratePlan(loadPlan());
 
 function newPlan(startPoint) {
@@ -83,17 +79,30 @@ otherKind.addEventListener("change", () => {
   if (!otherNameRow.hidden) otherName.focus();
 });
 
+const cabinetForm = document.getElementById("cabinet-form");
+const cabinetKind = document.getElementById("cabinet-kind");
+
+// Each start button opens its own short form; only one shows at a time.
 document.querySelectorAll("[data-start]").forEach((btn) => {
   btn.addEventListener("click", () => {
-    const type = btn.dataset.start;
-    if (type === "other") {
-      otherForm.hidden = false;
-      otherKind.focus();
-      return;
-    }
-    startRoute({ type, label: START_TYPES[type] });
+    const other = btn.dataset.start === "other";
+    otherForm.hidden = !other;
+    cabinetForm.hidden = other;
+    (other ? otherKind : cabinetKind).focus();
   });
 });
+
+cabinetForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  startRoute({ type: cabinetKind.value, label: typeLabel(cabinetKind.value) });
+});
+
+function cancelCabinet() {
+  cabinetForm.hidden = true;
+}
+
+document.getElementById("cabinet-cancel").addEventListener("click", cancelCabinet);
+cabinetForm.prepend(xButton(cancelCabinet));
 
 otherForm.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -188,6 +197,8 @@ function swatch(color, small) {
 // cable can run from Handhole A through Handhole B to Handhole C.
 
 const STOP_TYPES = {
+  headend: "Head end",
+  fdh: "FDH",
   splice: "Splice",
   handhole: "Handhole",
   pedestal: "Pedestal",
@@ -199,13 +210,13 @@ const STOP_TYPES = {
 };
 
 // Locations offered by the + button, in menu order.
-const ADD_TYPES = ["handhole", "pedestal", "vault", "manhole", "splice", "cabinet"];
+const ADD_TYPES = ["handhole", "pedestal", "vault", "manhole", "splice", "fdh", "headend"];
 
 // Standard loose-tube cable counts, and smaller counts for drops to a NID.
 const FIBER_COUNTS = [12, 24, 48, 72, 96, 144, 216, 288, 432];
 const DROP_COUNTS = [1, 2, 4, 6, 12];
 const CABLE_SIZES = [1, 2, 4, 6, 12, 24, 48, 72, 96, 144, 216, 288, 432];
-const SPLITTER_RATIOS = ["1x2", "1x4", "1x8", "1x16", "1x32"];
+const SPLITTER_RATIOS = ["1x2", "1x4", "1x8", "1x16", "1x32", "1x64"];
 
 // Tails come pre-attached to a splitter or terminal; otherwise they are
 // entered like any other cable.
@@ -334,49 +345,39 @@ function branchEl(p) {
   return branch;
 }
 
+// A location card: colored icon tile, type, name, then chips for its
+// equipment and counts.
 function stopEl(p) {
   const isStart = p.id === plan.points[0].id;
-  const el = document.createElement("button");
-  el.className = "stop" + (isStart ? " start" : "") + (p.type === "nid" ? " nid" : "") +
-    (p.id === selectedId ? " selected" : "");
-  const type = document.createElement("div");
-  type.className = "type";
+  const meta = locMeta(p);
+  const card = el("button", "stop" + (isStart ? " start" : "") + (p.type === "nid" ? " nid" : "") +
+    (p.id === selectedId ? " selected" : ""));
+  card.type = "button";
+  card.style.setProperty("--c", meta.color);
+  const badge = el("span", "badge");
+  badge.append(iconEl(meta.icon));
   const label = typeLabel(p.type);
   // "Start · Cabinet" over "Cabinet" says it twice.
-  type.textContent = isStart ? (p.name === label ? "Start" : `Start · ${label}`) : label;
-  const name = document.createElement("div");
-  name.className = "name";
-  name.textContent = p.name;
-  el.append(type, name);
-  if (p.type === "nid" && p.lot && hasAddress(p)) {
-    const lot = document.createElement("div");
-    lot.className = "lot";
-    lot.textContent = lotName(p.lot);
-    el.append(lot);
-  }
-  for (const eq of p.equipment || []) {
-    const chip = document.createElement("div");
-    chip.className = "chip";
-    chip.textContent = equipmentLabel(eq);
-    el.append(chip);
-  }
+  const kind = el("span", "type", isStart ? (p.name === label ? "Start" : `Start · ${label}`) : label);
+  card.append(badge, kind, el("span", "name", p.name));
+  if (p.type === "nid" && p.lot && hasAddress(p)) card.append(el("span", "lot", lotName(p.lot)));
+  const chips = el("span", "chips");
+  for (const eq of p.equipment || []) chips.append(el("span", "chip", equipmentChip(eq)));
   if (p.type === "nid") {
     const f2 = homeF2(p);
-    if (f2) el.append(countChip(`F2 ${f2.f2}`));
-    if (p.ds && homeSplitter(p)) el.append(countChip(`DS ${p.ds.port}`));
+    if (f2) chips.append(countChip(`F2 ${f2.f2}`));
+    if (p.ds && homeSplitter(p)) chips.append(countChip(`DS ${p.ds.port}`));
   }
   for (const c of childCables(p.id).filter((x) => x.through)) {
-    const chip = document.createElement("div");
-    chip.className = "chip through";
-    chip.textContent = `${c.name} ${THROUGH_LABELS[c.through]}`;
-    el.append(chip);
+    chips.append(el("span", "chip through", `${c.name} ${THROUGH_LABELS[c.through]}`));
   }
-  el.addEventListener("click", (e) => openMenu(p.id, e));
-  el.addEventListener("contextmenu", (e) => {
+  if (chips.childNodes.length) card.append(chips);
+  card.addEventListener("click", (e) => openMenu(p.id, e));
+  card.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     openMenu(p.id, e);
   });
-  return el;
+  return card;
 }
 
 function plusEl(p) {
@@ -388,22 +389,26 @@ function plusEl(p) {
 
 // --- Popup menus ---
 
-function openPopup(title, items, e) {
+function openPopup(title, items, e, caption) {
   menu.innerHTML = "";
   const head = el("div", "menu-head");
-  head.append(el("div", "menu-title", title), xButton(() => {
+  const titles = el("div");
+  if (caption) titles.append(el("div", "menu-cap", caption));
+  titles.append(el("div", "menu-title", title));
+  head.append(titles, xButton(() => {
     closeMenu();
     selectedId = null;
     renderRoute();
   }));
   menu.append(head);
   for (const item of items) {
-    const b = btnEl(item.label, (ev) => {
+    const b = btnEl("", (ev) => {
       ev.stopPropagation();
       closeMenu();
       item.run();
     });
-    b.className = item.danger ? "danger" : "";
+    b.className = "mi" + (item.danger ? " danger" : "");
+    b.append(iconEl(item.icon || "info"), document.createTextNode(item.label));
     menu.append(b);
   }
   menu.hidden = false;
@@ -419,30 +424,39 @@ function closeMenu() {
 }
 
 // The menu on a location: everything but adding the next location,
-// which is on its + button.
+// which is on its + button. What's offered depends on the type.
 function openMenu(id, e) {
   e.stopPropagation();
   closePanels();
   selectedId = id;
   const p = point(id);
-  const home = p.type === "nid";
   const isStart = id === plan.points[0].id;
   const items = [];
-  if (home) {
-    items.push({ label: "# Counts (F2 / DS)", run: () => openCounts(id) });
-    items.push({ label: "✎ Address / lot", run: () => renameStop(id) });
+  const homesHere = () => feedsHomes(p);
+  if (p.type === "nid") {
+    items.push({ icon: "counts", label: "Counts (F2 / DS)", run: () => openCounts(id) });
+    items.push({ icon: "edit", label: "Address / lot", run: () => renameStop(id) });
+  } else if (isCabinet(p)) {
+    const eqLabel = p.type === "headend" ? "OLT shelves and panels" : p.type === "fdh" ? "Splitter modules and panels" : "Equipment";
+    items.push({ icon: p.type === "fdh" ? "splitter" : "shelf", label: eqLabel, run: () => openEquipment(id) });
+    items.push({ icon: "xconnect", label: "Connections and patching", run: () => openConnections(id) });
+    if (homesHere()) items.push({ icon: "homes", label: "Home counts (F2 / DS)", run: () => openBatchCounts(id) });
+    items.push({ icon: "info", label: "Cabinet details", run: () => openDetails(id) });
+    items.push({ icon: "sheet", label: "Splice sheet", run: () => openSpliceSheet(id) });
+    items.push({ icon: "edit", label: "Rename", run: () => renameStop(id) });
   } else {
-    items.push({ label: "⚙ Equipment", run: () => openEquipment(id) });
-    items.push({ label: `ⓘ ${p.type === "cabinet" ? "Cabinet" : "Location"} details`, run: () => openDetails(id) });
-    if (showsCrossConnects(p)) items.push({ label: "⇄ Cross-connects", run: () => openCrossConnects(id) });
-    items.push({ label: "☰ Splice sheet", run: () => openSpliceSheet(id) });
-    items.push({ label: "✎ Rename", run: () => renameStop(id) });
+    items.push({ icon: "closure", label: "Open splice case", run: () => openConnections(id) });
+    items.push({ icon: "splitter", label: "Equipment (case, splitters, terminals)", run: () => openEquipment(id) });
+    if (homesHere()) items.push({ icon: "homes", label: "Home counts (F2 / DS)", run: () => openBatchCounts(id) });
+    items.push({ icon: "info", label: "Details", run: () => openDetails(id) });
+    items.push({ icon: "sheet", label: "Splice sheet", run: () => openSpliceSheet(id) });
+    items.push({ icon: "edit", label: "Rename", run: () => renameStop(id) });
   }
   if (!isStart) {
-    items.push({ label: "⇄ Move (feed from somewhere else)", run: () => openMove(id) });
-    items.push({ label: "✕ Remove", danger: true, run: () => removeStop(id) });
+    items.push({ icon: "move", label: "Move (feed from somewhere else)", run: () => openMove(id) });
+    items.push({ icon: "remove", label: "Remove", danger: true, run: () => removeStop(id) });
   }
-  openPopup(p.name, items, e);
+  openPopup(p.name, items, e, typeLabel(p.type));
   renderRoute();
 }
 
@@ -451,16 +465,16 @@ function openAddMenu(fromId, e) {
   e.stopPropagation();
   closePanels();
   selectedId = fromId;
-  const items = ADD_TYPES.map((t) => ({ label: typeLabel(t), run: () => {
+  const items = ADD_TYPES.map((t) => ({ icon: LOC_META[t].icon, label: typeLabel(t), run: () => {
     addLocation(fromId, t, autoName(t));
     finish();
   } }));
-  items.push({ label: "Home (Customer NID)…", run: () => addHomeForm(fromId) });
+  items.push({ icon: "home", label: "Home (Customer NID)…", run: () => addHomeForm(fromId) });
   if (plan.unassigned.length) {
-    items.push({ label: `Homes from the unassigned list (${plan.unassigned.length})…`, run: () => openAssign(fromId) });
+    items.push({ icon: "homes", label: `Homes from the unassigned list (${plan.unassigned.length})…`, run: () => openAssign(fromId) });
   }
-  items.push({ label: "Other…", run: () => addOtherForm(fromId) });
-  openPopup(`Add after ${point(fromId).name}`, items, e);
+  items.push({ icon: "pin", label: "Other…", run: () => addOtherForm(fromId) });
+  openPopup(point(fromId).name, items, e, "Add the next location");
   renderRoute();
 }
 

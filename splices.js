@@ -90,7 +90,16 @@ function buildSpliceModel() {
       }
       overflow.push(it);
     };
-    for (const it of items) place(it, !madeHere(here, it));
+    // Splitter outputs the user pinned to a fiber go there first.
+    let rest = items;
+    for (const [n, it] of Object.entries(start.pins || {})) {
+      const k = Number(n);
+      if (k > start.fibers || map.has(k)) continue;
+      map.set(k, it);
+      const i = rest.indexOf(it);
+      if (i >= 0) rest = [...rest.slice(0, i), ...rest.slice(i + 1)];
+    }
+    for (const it of rest) place(it, !madeHere(here, it));
     const result = { map, overflow };
     assignCache.set(start.id, result);
     return result;
@@ -178,7 +187,7 @@ function buildSpliceModel() {
     const here = splittersAt(L);
     for (const s of here) {
       const from = s.f2 && c && s.f2 <= c.fibers ? fiberLabel(cableStart(c), s.f2) : source(L, `split-in:${s.id}`);
-      rows.push({ from, to: { text: `${s.name} input`, colors: "" }, note: s.f2 ? `F2 ${s.f2}` : "F2 not set" });
+      rows.push({ from, to: { text: `${s.name} input`, colors: "" }, note: s.f2 ? `F2 ${s.f2}` : "F2 not set", key: `split:${s.id}:in` });
     }
     for (const d of childCables(locId).filter((x) => !x.through)) {
       for (const f of childFibers(d)) {
@@ -193,7 +202,7 @@ function buildSpliceModel() {
           const x = crossConnectFor(`fiber:${d.id}:${f.out}`);
           if (x) from = { text: `Patched: ${endpointLabel(x.other)}`, colors: "" };
         }
-        rows.push({ from, to: fiberLabel(d, f.out), note: describe(f.item) });
+        rows.push({ from, to: fiberLabel(d, f.out), note: describe(f.item), key: `fiber:${d.id}:${f.out}` });
       }
     }
     const through = childCables(locId).filter((x) => x.through)
@@ -228,10 +237,14 @@ function spliceTable(model, locId) {
     if (xc) wrap.append(xc);
     return wrap;
   }
+  // Tray and slot, when there's a splice case here or the user set them.
+  const L = point(locId);
+  const trays = closureAt(L) || Object.keys(L.trays || {}).length
+    ? traySlots(L, connectionsAt(model, locId).filter((c) => c.kind !== "patch").map((c) => c.to)) : null;
   const table = document.createElement("table");
   table.className = "sheet-table splice-table";
   const thead = document.createElement("thead");
-  thead.innerHTML = "<tr><th>From</th><th>Color</th><th></th><th>To</th><th>Color</th><th>For</th><th>Done</th></tr>";
+  thead.innerHTML = `<tr>${trays ? "<th>Tray</th><th>Slot</th>" : ""}<th>From</th><th>Color</th><th></th><th>To</th><th>Color</th><th>For</th><th>Done</th></tr>`;
   table.append(thead);
   for (const r of rows) {
     const tr = document.createElement("tr");
@@ -249,6 +262,10 @@ function spliceTable(model, locId) {
       td.append(document.createTextNode(f.colors));
       return td;
     };
+    if (trays) {
+      const ts = trays.get(r.key);
+      tr.append(cell(ts ? String(ts.tray) : "", "mono"), cell(ts ? String(ts.slot) : "", "mono"));
+    }
     tr.append(cell(r.from.text, "strong"), colorCell(r.from), cell("→"), cell(r.to.text, "strong"),
       colorCell(r.to), cell(r.note), cell("☐", "checkbox-cell"));
     table.append(tr);
