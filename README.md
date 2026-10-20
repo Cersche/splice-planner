@@ -24,10 +24,13 @@ you have signal and it will work offline after that.
    **+ Add a name…** adds one.
 2. Pick where the route starts: **Cabinet** (head end or FDH) or **Other**
    (handhole, pedestal, vault, manhole, or type your own).
-3. The route sits on a canvas: drag the background to move around (one
-   finger on a phone), pinch, scroll with Ctrl or use **−** / **+** to zoom,
-   and **Fit all** to see the whole job. The small map in the corner shows
+3. The route sits on a canvas: drag the background or hold the middle mouse
+   button to move around (one finger on a phone); scroll the mouse wheel
+   (zooms toward the pointer), pinch or use **−** / **+** to zoom, and
+   **Fit all** to see the whole job. Shift + scroll moves sideways. The small map in the corner shows
    where you are; tap it to jump.
+   Lines are colored by what runs on them: cables red, splitter tails
+   blue, terminal tails green, dashed grey where there's no cable yet.
 4. Tap the **+** beside a location to add the next one after it. It's joined
    by a path (the line); a cable doesn't have to go on it yet.
 5. Tap a line to set its conduit (size, ducts, color, footage) and its cable:

@@ -1,6 +1,6 @@
 // The route sits on a canvas: drag the background (one finger on a
-// phone) to move around, pinch or use +/- to zoom, "Fit all" to see the
-// whole job. No scrollbars. The small overview in the corner shows where
+// phone, or hold the middle mouse button) to move around; pinch, the
+// scroll wheel or +/- to zoom; "Fit all" to see the whole job. No scrollbars. The small overview in the corner shows where
 // you are; tap it to jump.
 
 const routeView = document.getElementById("route-view");
@@ -145,10 +145,10 @@ function isControl(t) {
 }
 
 routeView.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0 || isControl(e.target)) return;
+  if ((e.button !== 0 && e.button !== 1) || isControl(e.target)) return;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   swallowClick = false;
-  if (pointers.size === 1) gesture = { kind: "pan", x0: e.clientX, y0: e.clientY, vx: view.x, vy: view.y, moved: false, id: e.pointerId };
+  if (pointers.size === 1) gesture = { kind: "pan", x0: e.clientX, y0: e.clientY, vx: view.x, vy: view.y, moved: false, id: e.pointerId, middle: e.button === 1 };
   else if (pointers.size === 2) startPinch();
 });
 
@@ -194,7 +194,8 @@ routeView.addEventListener("pointermove", (e) => {
 function endPointer(e) {
   if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
-  if (gesture && gesture.moved) swallowClick = true;
+  // A middle-button drag makes no click to swallow.
+  if (gesture && gesture.moved && !gesture.middle) swallowClick = true;
   if (pointers.size === 1 && gesture && gesture.kind === "pinch") {
     // One finger left after a pinch: carry on panning with it.
     const [id, p] = [...pointers.entries()][0];
@@ -209,6 +210,15 @@ function endPointer(e) {
 routeView.addEventListener("pointerup", endPointer);
 routeView.addEventListener("pointercancel", endPointer);
 
+// Holding the middle mouse button pans; don't let the browser start its
+// own auto-scroll or open a link.
+routeView.addEventListener("mousedown", (e) => {
+  if (e.button === 1) e.preventDefault();
+});
+routeView.addEventListener("auxclick", (e) => {
+  if (e.button === 1) e.preventDefault();
+});
+
 // A drag isn't a tap: keep it from opening a menu.
 routeView.addEventListener("click", (e) => {
   if (!swallowClick) return;
@@ -217,18 +227,21 @@ routeView.addEventListener("click", (e) => {
   e.preventDefault();
 }, true);
 
-// Mouse wheel and trackpad: scroll moves, pinch (or Ctrl + wheel) zooms.
+// Mouse wheel: zoom in and out around the pointer. Shift + wheel moves
+// sideways.
 routeView.addEventListener("wheel", (e) => {
   if (isControl(e.target)) return;
   e.preventDefault();
   const box = routeView.getBoundingClientRect();
-  if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * 0.01), e.clientX - box.left, e.clientY - box.top);
-  else {
-    view.x -= e.shiftKey ? e.deltaY : e.deltaX;
-    view.y -= e.shiftKey ? 0 : e.deltaY;
+  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? routeView.clientHeight : 1;
+  if (e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    view.x -= (e.deltaY || e.deltaX) * unit;
     clampView();
-    applyView();
+    return applyView();
   }
+  const dy = Math.max(-200, Math.min(200, e.deltaY * unit));
+  // Trackpad pinches come as Ctrl + small steps: zoom a bit faster for them.
+  zoomAt(Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)), e.clientX - box.left, e.clientY - box.top);
 }, { passive: false });
 
 // --- Overview map ---

@@ -147,6 +147,7 @@ function buildSheet() {
       const used = head.offsetHeight + page.querySelector(".sheet-problems").offsetHeight;
       const room = PRINT_HEIGHT_PX - used - 90;
       const scale = Math.min(1, PRINT_WIDTH_PX / tree.scrollWidth, room / tree.scrollHeight);
+      drawWires(tree);
       sheet.classList.remove("measuring");
       tree.style.zoom = scale < 1 ? String(scale) : "";
       if (scale >= MIN_MAP_SCALE) break;
@@ -181,6 +182,7 @@ function buildTiles(tiles, diagram, model) {
   sheet.classList.add("measuring");
   const W = full.scrollWidth;
   const H = full.scrollHeight;
+  drawWires(full);
   sheet.classList.remove("measuring");
   holder.remove();
 
@@ -250,8 +252,9 @@ function printBranch(p, compact, model, pageOf) {
 }
 
 function dropsEl(paths) {
-  const wrap = el("div", "cable drop");
+  const wrap = el("div", "cable drop" + (paths.some(pathCable) ? "" : " empty"));
   const cables = paths.map(pathCable).filter(Boolean);
+  wrap.style.setProperty("--wire", wireColor(cables[0]));
   const sizes = [...new Set(cables.map((c) => c.fibers))].map((n) => `${n}F`).join("/");
   wrap.append(el("div", "cable-name", `${cables.length} drops`), el("div", "cable-size", sizes || "no drops yet"), el("div", "line"));
   return wrap;
