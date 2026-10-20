@@ -55,6 +55,31 @@ function checkPlan() {
       }
     }
 
+    // Splitter outputs pinned to fibers that no longer exist.
+    for (const d of out.filter((x) => !x.through && x.pins)) {
+      for (const [n, it] of Object.entries(d.pins)) {
+        const [, sid, port] = it.split(":");
+        const s = splittersAt(p).find((x) => x.id === sid);
+        if (Number(n) > d.fibers) problem(p.id, `A splitter output at ${p.name} is spliced to ${d.name} #${n}, but ${d.name} only has ${d.fibers} fibers.`);
+        else if (!s || Number(port) > splitterPorts(s)) problem(p.id, `${d.name} #${n} at ${p.name} is spliced to a splitter output that was removed.`);
+      }
+    }
+
+    // Two splices in one tray slot, or more slots than the case has.
+    const closure = closureAt(p);
+    if (closure || Object.keys(p.trays || {}).length) {
+      const keys = connectionsAt(model, p.id).filter((c) => c.kind !== "patch").map((c) => c.to);
+      const seen = new Map();
+      for (const [key, ts] of traySlots(p, keys)) {
+        const at = `${ts.tray}/${ts.slot}`;
+        if (seen.has(at)) problem(p.id, `Tray ${ts.tray} slot ${ts.slot} at ${p.name} holds two splices: ${endpointLabel(seen.get(at))} and ${endpointLabel(key)}.`);
+        seen.set(at, key);
+        if (closure && (ts.tray > closure.trays || ts.slot > closure.slots)) {
+          problem(p.id, `${closure.name} at ${p.name} has ${closure.trays} trays of ${closure.slots}, but a splice is in tray ${ts.tray} slot ${ts.slot}.`);
+        }
+      }
+    }
+
     for (const s of splittersAt(p)) {
       if (!s.f2) problem(p.id, `${s.name} at ${p.name} has no F2 count.`);
       else if (arriving && s.f2 > arriving.fibers) {

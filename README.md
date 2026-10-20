@@ -18,17 +18,26 @@ you have signal and it will work offline after that.
 
 ## Using it
 
-1. Pick where the route starts: **Cabinet** or **Other** (handhole, pedestal,
-   vault, manhole, or type your own).
+1. Pick where the route starts: **Cabinet** (head end or FDH) or **Other**
+   (handhole, pedestal, vault, manhole, or type your own).
 2. Tap the **+** beside a location to add the next one after it. It's joined
    by a path (the line); a cable doesn't have to go on it yet.
 3. Tap a line to set its conduit (size, ducts, color, footage) and its cable:
    type (cable, splitter tail, terminal tail), name, size, whether it passes
    through, and which incoming fibers it's spliced to (automatic, or pick
    them yourself). Each cable shows a label like "1-12 to HH2, 13-48 spare".
-4. Tap a location for its menu: equipment (splitters several at a time,
-   shelves from templates), details, cross-connects, splice sheet, rename,
-   move or remove.
+4. Tap a location for its menu. Head ends, FDHs and field locations each get
+   their own: equipment from stock templates (OLTs, FDH panels, splice cases,
+   terminals, patch panels, splitters 1x2 to 1x64), the splice case or
+   patching editor, home counts, details, splice sheet, rename, move or
+   remove.
+   - **Open splice case** / **Connections and patching**: drag from a fiber,
+     splitter output or port on the left to a fiber, splitter input or port
+     on the right (or tap one, then the other). Tray and slot numbers are
+     filled in when there's a splice case, and can be changed. The splice
+     sheets follow what you connect.
+   - **Home counts (F2 / DS)**: tick homes, pick a splitter and first port,
+     and fill DS counts in order.
 5. **Import homes** brings in an address list for the whole job. Homes wait
    on the unassigned list until you pick the location that feeds them.
 6. **Check plan** lists problems and warnings. Tap one to find it.
