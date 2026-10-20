@@ -6,7 +6,6 @@ const STORAGE_KEY = "splicePlanner.plan";
 
 const START_TYPES = {
   cabinet: "Cabinet",
-  splice: "Splice",
 };
 
 let plan = loadPlan();
@@ -59,13 +58,21 @@ function show(name) {
 
 const otherForm = document.getElementById("other-form");
 const otherName = document.getElementById("other-name");
+const otherKind = document.getElementById("other-kind");
+const otherNameRow = document.getElementById("other-name-row");
+
+// The text box is only needed when the dropdown says Other.
+otherKind.addEventListener("change", () => {
+  otherNameRow.hidden = otherKind.value !== "other";
+  if (!otherNameRow.hidden) otherName.focus();
+});
 
 document.querySelectorAll("[data-start]").forEach((btn) => {
   btn.addEventListener("click", () => {
     const type = btn.dataset.start;
     if (type === "other") {
       otherForm.hidden = false;
-      otherName.focus();
+      otherKind.focus();
       return;
     }
     startRoute({ type, label: START_TYPES[type] });
@@ -74,14 +81,18 @@ document.querySelectorAll("[data-start]").forEach((btn) => {
 
 otherForm.addEventListener("submit", (e) => {
   e.preventDefault();
+  const type = otherKind.value;
+  if (type !== "other") return startRoute({ type, label: typeLabel(type) });
   const label = otherName.value.trim();
-  if (!label) return;
+  if (!label) return otherName.focus();
   startRoute({ type: "other", label });
 });
 
 document.getElementById("other-cancel").addEventListener("click", () => {
   otherForm.hidden = true;
   otherName.value = "";
+  otherKind.value = "handhole";
+  otherNameRow.hidden = true;
 });
 
 function startRoute({ type, label }) {
@@ -160,6 +171,9 @@ function swatch(color, small) {
 const STOP_TYPES = {
   splice: "Splice",
   handhole: "Handhole",
+  pedestal: "Pedestal",
+  vault: "Vault",
+  manhole: "Manhole",
   cabinet: "Cabinet",
   nid: "Customer NID",
   other: "Other",

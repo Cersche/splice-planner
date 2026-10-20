@@ -2,7 +2,7 @@
 // cached on first visit, and updates are picked up the next time it
 // opens online.
 
-const CACHE = "splice-planner-v1";
+const CACHE = "splice-planner-v2";
 const FILES = [
   "./", "index.html", "styles.css", "app.js", "import.js", "counts.js", "files.js",
   "splices.js", "edits.js", "check.js", "print.js", "manifest.json",

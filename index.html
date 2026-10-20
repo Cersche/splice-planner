@@ -24,10 +24,6 @@
           <span class="icon" aria-hidden="true">&#9638;</span>
           Cabinet
         </button>
-        <button class="big-btn" data-start="splice">
-          <span class="icon" aria-hidden="true">&#9673;</span>
-          Splice
-        </button>
         <button class="big-btn secondary" data-start="other">
           <span class="icon" aria-hidden="true">&#9998;</span>
           Other
@@ -37,8 +33,18 @@
       <button class="btn ghost open-saved" data-open-plan>&#128194; Open a saved plan</button>
 
       <form id="other-form" class="other-form" hidden>
-        <label for="other-name">Name your starting point</label>
-        <input id="other-name" type="text" placeholder="e.g. Pedestal, Handhole, Building MPOE" autocomplete="off" required>
+        <label for="other-kind">What is the starting point?</label>
+        <select id="other-kind" class="big-select">
+          <option value="handhole">Handhole</option>
+          <option value="pedestal">Pedestal</option>
+          <option value="vault">Vault</option>
+          <option value="manhole">Manhole</option>
+          <option value="other">Other</option>
+        </select>
+        <div id="other-name-row" hidden>
+          <label for="other-name">Type what it is</label>
+          <input id="other-name" type="text" placeholder="e.g. Building MPOE" autocomplete="off">
+        </div>
         <div class="row">
           <button type="button" class="btn ghost" id="other-cancel">Cancel</button>
           <button type="submit" class="btn">Start here</button>
