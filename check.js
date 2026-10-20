@@ -103,7 +103,8 @@ function checkPlan() {
       if (homes.length > splitterPorts(s)) {
         problem(p.id, `${s.name} at ${p.name} feeds ${homes.length} homes but only has ${splitterPorts(s)} ports.`);
       }
-      if (!homes.length) warn(p.id, `${s.name} at ${p.name} doesn't feed any homes.`);
+      // A cascade splitter feeds other splitters instead.
+      if (!homes.length && !isCascade(s)) warn(p.id, `${s.name} at ${p.name} doesn't feed any homes.`);
     }
 
     // Bigger cable than the one feeding it: allowed, but often a mistake.

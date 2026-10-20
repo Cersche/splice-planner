@@ -115,6 +115,12 @@
         <span class="chip from-chip" id="from-chip" hidden></span>
         <label class="user-pick" title="Who is working"><svg class="ic"><use href="#i-user"/></svg><select data-user-pick aria-label="Who is working"></select></label>
         <span class="chip view-only guest-only">View only</span>
+        <div class="route-search" role="search">
+          <label for="route-search" class="sr-only">Find on the route</label>
+          <input type="search" id="route-search" placeholder="Find a lot, terminal or cable" autocomplete="off" spellcheck="false">
+          <div id="search-results" class="search-results" role="listbox" aria-label="Search results" hidden></div>
+        </div>
+        <label class="layout-label" title="How the route is shown on this device"><span>Layout</span><select id="layout-pick" class="layout-pick"></select></label>
         <div class="header-actions">
           <button class="btn ghost edit-only" id="import-homes"><svg class="ic"><use href="#i-homes"/></svg> Import homes</button>
           <button class="btn ghost" id="unassigned-homes" hidden></button>
@@ -134,9 +140,12 @@
           <button type="button" class="zoom-btn zoom-level" id="zoom-reset" title="Back to 100%">100%</button>
           <button type="button" class="zoom-btn" id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
           <button type="button" class="zoom-btn fit" id="zoom-fit" title="Fit the whole route">Fit all</button>
+          <button type="button" class="zoom-btn fit" id="fold-all" title="Tuck every home and tail terminal back into its location">Fold all</button>
         </div>
         <canvas id="minimap" class="minimap" width="180" height="110" aria-label="Overview: tap to jump"></canvas>
       </div>
+      <!-- The Table layout: a row per home, grouped by location (table.js) -->
+      <div id="route-table" class="route-table" hidden></div>
 
       <!-- Popup menu on a location, or on its + button. Built in app.js. -->
       <div id="context-menu" class="context-menu" hidden></div>
@@ -262,6 +271,8 @@
   <script src="catalog.js"></script>
   <script src="app.js"></script>
   <script src="pan.js"></script>
+  <script src="fold.js"></script>
+  <script src="table.js"></script>
   <script src="phases.js"></script>
   <script src="paths.js"></script>
   <script src="equipment.js"></script>

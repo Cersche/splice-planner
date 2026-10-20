@@ -55,13 +55,53 @@ function homeF2(home) {
   return s && s.f2 ? s : null;
 }
 
+// The fiber that really feeds a splitter: { cable, n, traced }. A
+// terminal at its own spot is fed by a terminal tail spliced in the
+// location before it, so its F2 is the fiber the tail is spliced to
+// there (F09610 #3), not the tail's own fiber 1. Tails are followed back
+// through their fiber picks, or the app's own picks when there are none.
+function f2Source(eq) {
+  if (!eq.f2) return null;
+  const loc = equipmentLocation(eq.id);
+  const arriving = loc && incomingCable(loc.id);
+  if (!arriving) return null;
+  let cable = cableStart(arriving);
+  let n = eq.f2;
+  const seen = new Set();
+  while (cableKind(cable) === "terminal-tail" && !seen.has(cable.id)) {
+    seen.add(cable.id);
+    const up = incomingCable(cable.from);
+    if (!up) break;
+    const pairs = cable.picks ? expandPicks(cable.picks) : (routeModel || buildSpliceModel()).autoPairs(cable);
+    const pair = pairs.find((x) => x.out === n);
+    if (!pair) break;
+    cable = cableStart(up);
+    n = pair.in;
+  }
+  return { cable, n, traced: seen.size > 0 && cable !== cableStart(arriving) };
+}
+
+// A splitter's F2 as it reads on cards and sheets: "F2 61", or
+// "F2 F09610 #3" for a terminal fed by a tail.
+function f2Label(eq) {
+  if (!eq.f2) return "F2 not set";
+  const src = f2Source(eq);
+  return src && src.traced ? `${countScheme().f2Prefix}${src.cable.name} #${padNum(src.n, countScheme().pad)}` : f2Text(eq.f2);
+}
+
+// The same, under an "F2" table heading.
+function f2CellFor(eq) {
+  if (!eq.f2) return "";
+  const src = f2Source(eq);
+  return src && src.traced ? `${src.cable.name} #${padNum(src.n, countScheme().pad)}` : f2Cell(eq.f2);
+}
+
 // The F2 fiber's tube and color, when the location has a cable arriving.
 function f2Colors(eq) {
-  const loc = equipmentLocation(eq.id);
-  const c = loc && incomingCable(loc.id);
-  if (!c || !eq.f2 || eq.f2 > c.fibers) return "";
-  const f = colorCode(c.fibers)[eq.f2 - 1];
-  return `${f.tubeColor.name} tube, ${f.fiberColor.name} fiber, on ${c.name}`;
+  const src = f2Source(eq);
+  if (!src || src.n > src.cable.fibers) return "";
+  const f = colorCode(src.cable.fibers)[src.n - 1];
+  return `${f.tubeColor.name} tube, ${f.fiberColor.name} fiber, on ${src.cable.name}`;
 }
 
 // Ports on a splitter already taken: port -> home.
@@ -71,6 +111,16 @@ function usedPorts(eq, exceptHomeId) {
     if (h.type === "nid" && h.id !== exceptHomeId && h.ds && h.ds.splitterId === eq.id) used.set(h.ds.port, h);
   }
   return used;
+}
+
+// A cascade splitter (like the 1x8s in an LCP) feeds other splitters,
+// not homes: its outputs are patched or spliced onward and no home is on
+// its ports.
+function isCascade(eq) {
+  const out = `split:${eq.id}:`;
+  const onward = plan.xconnects.some((x) => [x.a, x.b].some((e) => e && e.startsWith(out) && e !== `${out}in`)) ||
+    plan.cables.some((c) => Object.values(c.pins || {}).some((it) => it.startsWith(`port:${eq.id}:`)));
+  return onward && !plan.points.some((h) => h.type === "nid" && h.ds && h.ds.splitterId === eq.id);
 }
 
 function nextFreePort(eq, exceptHomeId) {
@@ -137,7 +187,8 @@ function f2Text(n) {
 }
 
 // The DS number a home reads: its port, or a running count where each
-// splitter (in route order) follows on from the one before.
+// splitter (in route order) follows on from the one before. Cascade
+// splitters feed no homes, so they don't take up numbers.
 function dsNumber(home) {
   if (!home.ds) return null;
   const s = countScheme();
@@ -146,7 +197,7 @@ function dsNumber(home) {
   for (const p of routeOrder()) {
     for (const sp of splittersAt(p)) {
       if (sp.id === home.ds.splitterId) return s.dsStart - 1 + off + home.ds.port;
-      off += splitterPorts(sp);
+      if (!isCascade(sp)) off += splitterPorts(sp);
     }
   }
   return home.ds.port;
@@ -280,11 +331,11 @@ function homeCountEditor(home, changed) {
   }
   const locked = !home.dsManual;
   const s = homeSplitter(home);
-  const view = el("span", "auto-val mono", [s.f2 ? f2Text(s.f2) : "F2 not set", homeDs(home) || "no DS"].join(" · "));
+  const view = el("span", "auto-val mono", [f2Label(s), homeDs(home) || "no DS"].join(" · "));
   const editor = el("span", "count-selects");
   const sSel = selectEl(list.map((x) => {
     const full = nextFreePort(x, home.id) === null;
-    return { value: x.id, label: `${x.f2 ? f2Text(x.f2) : "F2 not set"} · ${x.name}${full ? " (full)" : ""}`, disabled: full && x.id !== s.id };
+    return { value: x.id, label: `${f2Label(x)} · ${x.name}${full ? " (full)" : ""}`, disabled: full && x.id !== s.id };
   }), s.id);
   sSel.title = "Splitter (F2)";
   const ports = [{ value: "", label: "No DS" }];
@@ -309,7 +360,7 @@ function homeCountEditor(home, changed) {
     changed();
   });
   if (list.length > 1) editor.append(sSel);
-  else editor.append(el("span", "mono fixed-val", s.f2 ? f2Text(s.f2) : "F2 not set"));
+  else editor.append(el("span", "mono fixed-val", f2Label(s)));
   editor.append(pSel);
   wrap.append(lockField(locked, view, editor, (lock) => {
     if (lock) {
@@ -358,7 +409,7 @@ function openCounts(id) {
         body.append(box);
         return;
       }
-      box.append(el("div", "f2-big", [s.f2 ? f2Text(s.f2) : "F2 not set", homeDs(home)].filter(Boolean).join(" · ")),
+      box.append(el("div", "f2-big", [f2Label(s), homeDs(home)].filter(Boolean).join(" · ")),
         el("div", "", `From ${s.name} at ${loc.name}` + (s.f2 && f2Colors(s) ? ` · ${f2Colors(s)}` : "")));
       body.append(box, el("p", "hint", "Locked counts are filled in by the app. Tap the lock to pick them yourself."));
       const changed = () => {
@@ -455,7 +506,7 @@ function openHomeCounts(locId) {
       const device = devices.find((d) => d.id === deviceId);
       top.innerHTML = "";
       if (devices.length) {
-        const dSel = selectEl(devices.map((d) => ({ value: d.id, label: d.type === "splitter" ? `${d.name}${d.f2 ? ` · ${f2Text(d.f2)}` : ""}` : `${d.name} (terminal)` })), deviceId);
+        const dSel = selectEl(devices.map((d) => ({ value: d.id, label: d.type === "splitter" ? `${d.name}${d.f2 ? ` · ${f2Label(d)}` : ""}` : `${d.name} (terminal)` })), deviceId);
         dSel.addEventListener("change", () => {
           deviceId = dSel.value;
           render();

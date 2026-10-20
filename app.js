@@ -377,13 +377,23 @@ let routeModel = null;
 
 function renderRoute() {
   routeModel = buildSpliceModel();
-  // Keep the card being worked on where it was on screen.
-  const anchor = rememberAnchor();
-  tree.innerHTML = "";
-  tree.append(branchEl(plan.points[0]));
-  restoreAnchor(anchor);
-  drawFans();
-  scheduleMinimap();
+  // The Table layout (table.js) stands in for the drawing.
+  const table = layoutNow() === "table";
+  routeView.hidden = table;
+  routeTable.hidden = !table;
+  if (table) {
+    tree.innerHTML = "";
+    renderTable();
+  } else {
+    // Keep the card being worked on where it was on screen.
+    const anchor = rememberAnchor();
+    tree.innerHTML = "";
+    tree.append(branchEl(plan.points[0]));
+    restoreAnchor(anchor);
+    drawFans();
+    scheduleMinimap();
+  }
+  renderLayoutPick();
   updateUnassignedButton();
   renderHeader();
 }
@@ -394,10 +404,19 @@ function branchEl(p) {
   wrap.append(stopEl(p));
   if (p.type !== "nid") wrap.append(plusEl(p));
   branch.append(wrap);
-  const paths = shownPaths(p.id);
+  const all = shownPaths(p.id);
   // Homes at the end of the line fan out together; anything that carries
-  // on gets its own row.
-  const drops = paths.filter((x) => isEndHome(x));
+  // on gets its own row. Folded (fold.js): homes and tail terminals wait
+  // in the tray under the card, and a folded branch shows nothing past it.
+  const drops = all.filter((x) => isEndHome(x));
+  const tucked = all.filter((x) => !drops.includes(x) && isTucked(x));
+  const onward = all.filter((x) => !drops.includes(x) && !tucked.includes(x));
+  const tray = p.type === "nid" ? null : foldTray(p, drops, tucked, onward.length > 0);
+  if (tray) {
+    wrap.classList.add("has-tray");
+    wrap.insertBefore(tray, wrap.lastChild);
+  }
+  const paths = branchFolded(p.id) ? [] : [...onward, ...(homesShown(p.id) ? drops : [])];
   if (paths.length) {
     const kids = el("div", "children");
     for (const path of paths.filter((x) => !drops.includes(x))) {
@@ -405,9 +424,10 @@ function branchEl(p) {
       child.append(pathEl(path, routeModel), branchEl(point(path.to)));
       kids.append(child);
     }
-    if (drops.length) {
+    const fanned = paths.filter((x) => drops.includes(x));
+    if (fanned.length) {
       const child = el("div", "child fan-child");
-      child.append(fanEl(drops));
+      child.append(fanEl(fanned));
       kids.append(child);
     }
     branch.append(kids);
@@ -507,7 +527,8 @@ function drawWires(root, z = 1) {
   svg.setAttribute("width", root.scrollWidth);
   svg.setAttribute("height", root.scrollHeight);
   for (const kids of root.querySelectorAll(".children")) {
-    const stop = kids.parentElement.querySelector(":scope > .stop-wrap > .stop, :scope > .stop");
+    // From the card's right edge, halfway down the card and its tray.
+    const stop = kids.parentElement.querySelector(":scope > .stop-wrap, :scope > .stop");
     if (!stop) continue;
     const s = stop.getBoundingClientRect();
     const x0 = X(s.right) - 1;
@@ -571,7 +592,7 @@ function stopEl(p) {
   for (const eq of p.equipment || []) chips.append(el("span", "chip", equipmentChip(eq)));
   if (p.type === "nid") {
     const f2 = homeF2(p);
-    if (f2) chips.append(countChip(f2Text(f2.f2)));
+    if (f2) chips.append(countChip(f2Label(f2)));
     if (homeDs(p)) chips.append(countChip(homeDs(p)));
   }
   for (const c of childCables(p.id).filter((x) => x.through)) {
@@ -740,6 +761,8 @@ function addLocation(fromId, type, name, extra) {
   const stop = { id: makeId(), type, label: typeLabel(type), name, equipment: [], ...extra };
   plan.points.push(stop);
   plan.paths.push({ id: makeId(), from: fromId, to: stop.id });
+  // Something just added shouldn't vanish into a fold.
+  unfoldTo(stop.id);
   return stop;
 }
 
