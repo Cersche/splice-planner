@@ -12,10 +12,6 @@ function splitterPorts(eq) {
   return parseInt(eq.ratio.split("x")[1], 10);
 }
 
-function equipmentLabel(eq) {
-  return eq.type === "splitter" && eq.f2 ? `${eq.name} · F2 ${eq.f2}` : eq.name;
-}
-
 function countChip(text) {
   const chip = document.createElement("div");
   chip.className = "chip count";
@@ -34,8 +30,8 @@ function feedingLocation(locId) {
   while (id) {
     const p = point(id);
     if (p && splittersAt(p).length) return p;
-    const c = incomingCable(id);
-    id = c ? c.from : null;
+    const path = incomingPath(id);
+    id = path ? path.from : null;
   }
   return null;
 }
@@ -43,8 +39,8 @@ function feedingLocation(locId) {
 // The splitter feeding a home: the one its DS is on, else the first
 // splitter at the nearest upstream location that has one.
 function homeSplitter(home) {
-  const c = incomingCable(home.id);
-  const loc = c && feedingLocation(c.from);
+  const path = incomingPath(home.id);
+  const loc = path && feedingLocation(path.from);
   if (!loc) return null;
   const list = splittersAt(loc);
   return (home.ds && list.find((s) => s.id === home.ds.splitterId)) || list[0];
@@ -81,20 +77,18 @@ function nextFreePort(eq, exceptHomeId) {
 
 // --- F2 for a splitter ---
 
-// Splitters fed from the same physical cable share its fiber numbers.
+// Splitters fed from the same physical cable share its fiber numbers,
+// and can't take a fiber that's picked for another cable.
 function f2Problem(loc, eq, n) {
   if (!Number.isInteger(n) || n < 1) return "Enter a fiber number.";
   const c = incomingCable(loc.id);
-  if (!c) return "";
-  if (n > c.fibers) return `${c.name} only has ${c.fibers} fibers.`;
-  const cable = cableStart(c).id;
-  for (const p of plan.points) {
-    const pc = incomingCable(p.id);
-    if (!pc || cableStart(pc).id !== cable) continue;
-    const clash = splittersAt(p).find((s) => s.id !== eq.id && s.f2 === n);
-    if (clash) return `F2 ${n} already feeds ${clash.name} at ${p.name}.`;
+  if (!c) {
+    const clash = splittersAt(loc).find((s) => s.id !== eq.id && s.f2 === n);
+    return clash ? `F2 ${n} already feeds ${clash.name}.` : "";
   }
-  return "";
+  if (n > c.fibers) return `${c.name} only has ${c.fibers} fibers.`;
+  const used = fixedInUse(cableStart(c).id, eq.id).get(n);
+  return used ? `${c.name} #${n} already ${used}.` : "";
 }
 
 function nextFreeF2(loc, eq) {
@@ -102,53 +96,6 @@ function nextFreeF2(loc, eq) {
   const max = c ? c.fibers : 999;
   for (let n = 1; n <= max; n++) if (!f2Problem(loc, eq, n)) return n;
   return null;
-}
-
-// Ask which F2 fiber feeds a splitter. Saves on eq.f2, then calls done.
-function askF2(loc, eq, done) {
-  const c = incomingCable(loc.id);
-  ask(`Which F2 fiber feeds ${eq.name} at ${loc.name}?`, [], () => {});
-  const box = document.createElement("div");
-  box.className = "f2-form";
-  const input = document.createElement("input");
-  input.type = "number";
-  input.min = 1;
-  if (c) input.max = c.fibers;
-  input.value = eq.f2 || nextFreeF2(loc, eq) || "";
-  const note = document.createElement("p");
-  const save = document.createElement("button");
-  save.type = "button";
-  save.className = "btn big";
-  save.textContent = "Save F2";
-  const skip = document.createElement("button");
-  skip.type = "button";
-  skip.className = "btn ghost";
-  skip.textContent = "Skip for now";
-  const row = document.createElement("div");
-  row.className = "row";
-  row.append(skip, save);
-
-  function check() {
-    const n = Number(input.value);
-    const problem = f2Problem(loc, eq, n);
-    note.className = problem ? "error" : "hint";
-    if (problem) note.textContent = problem;
-    else if (c) {
-      const f = colorCode(c.fibers)[n - 1];
-      note.textContent = `Fiber ${n} on ${c.name}: ${f.tubeColor.name} tube, ${f.fiberColor.name} fiber.`;
-    } else note.textContent = `No cable arrives at ${loc.name}, so F2 is just a number here.`;
-    save.disabled = !!problem;
-  }
-  input.addEventListener("input", check);
-  save.addEventListener("click", () => {
-    eq.f2 = Number(input.value);
-    done();
-  });
-  skip.addEventListener("click", () => done());
-  box.append(input, note, row);
-  wizardChoices.append(box);
-  check();
-  input.focus();
 }
 
 // --- Counts panel ---
@@ -163,32 +110,25 @@ function closeCounts() {
 }
 
 function openCounts(id) {
-  const p = point(id);
-  if (p.type !== "nid") return editSplitterF2(p);
-  closeWizard();
-  closeCable();
-  closeImport();
+  closePanels();
+  selectedId = id;
   countsHomeId = id;
   countsPanel.hidden = false;
   renderCounts();
-  countsPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  renderRoute();
 }
 
-function editSplitterF2(loc) {
-  const list = splittersAt(loc);
-  const go = (eq) => askF2(loc, eq, finish);
-  if (list.length === 1) return go(list[0]);
-  ask(`Which splitter at ${loc.name}?`,
-    list.map((s) => ({ label: equipmentLabel(s), value: s.id })),
-    (sid) => go(list.find((s) => s.id === sid)));
-}
+registerPanel(countsPanel, closeCounts);
+
+const countsSplitter = document.getElementById("counts-splitter");
+const countsPort = document.getElementById("counts-port");
 
 function renderCounts() {
   const home = point(countsHomeId);
   document.getElementById("counts-title").textContent = `Counts for ${home.name}`;
   const f2Box = document.getElementById("counts-f2");
-  const c = incomingCable(home.id);
-  const loc = c && feedingLocation(c.from);
+  const path = incomingPath(home.id);
+  const loc = path && feedingLocation(path.from);
   const splitter = homeSplitter(home);
 
   f2Box.innerHTML = "";
@@ -204,7 +144,7 @@ function renderCounts() {
   big.textContent = splitter.f2 ? `F2 ${splitter.f2}` : "F2 not set";
   const detail = document.createElement("div");
   detail.textContent = `From ${splitter.name} at ${loc.name}` +
-    (splitter.f2 ? (f2Colors(splitter) ? ` · ${f2Colors(splitter)}` : "") : ". Set it from the splitter's location.");
+    (splitter.f2 ? (f2Colors(splitter) ? ` · ${f2Colors(splitter)}` : "") : ". Set it in that location's Equipment.");
   f2Box.append(big, detail);
 
   dsOn.disabled = false;
@@ -214,47 +154,38 @@ function renderCounts() {
 
   // More than one splitter at that location: pick which one.
   const list = splittersAt(loc);
-  const pick = document.getElementById("counts-splitters");
-  pick.innerHTML = "";
-  pick.hidden = list.length < 2;
-  for (const s of list) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "big-btn" + (s.id === home.ds.splitterId ? "" : " secondary");
-    b.textContent = equipmentLabel(s);
-    b.addEventListener("click", () => {
-      const port = nextFreePort(s, home.id);
-      if (port === null) return alert(`Every port on ${s.name} is taken.`);
-      home.ds = { splitterId: s.id, port };
-      saveCounts();
-    });
-    pick.append(b);
-  }
+  document.getElementById("counts-splitter-row").hidden = list.length < 2;
+  countsSplitter.replaceChildren(...selectEl(list.map((s) => {
+    const full = nextFreePort(s, home.id) === null;
+    return { value: s.id, label: equipmentLabel(s) + (full ? " (full)" : ""), disabled: full && s.id !== splitter.id };
+  }), splitter.id).childNodes);
+  countsSplitter.value = splitter.id;
 
-  document.getElementById("counts-ds-question").textContent = `DS port on ${splitter.name}`;
-  const ports = document.getElementById("counts-ports");
-  ports.innerHTML = "";
   const used = usedPorts(splitter, home.id);
+  const ports = [];
   for (let n = 1; n <= splitterPorts(splitter); n++) {
-    const b = document.createElement("button");
-    b.type = "button";
     const taken = used.get(n);
-    b.className = "big-btn port" + (home.ds.port === n ? "" : " secondary");
-    b.disabled = !!taken;
-    b.textContent = n;
-    if (taken) {
-      b.title = `Taken by ${taken.name}`;
-      const who = document.createElement("small");
-      who.textContent = taken.name;
-      b.append(who);
-    }
-    b.addEventListener("click", () => {
-      home.ds.port = n;
-      saveCounts();
-    });
-    ports.append(b);
+    ports.push({ value: n, label: taken ? `${n} (taken: ${taken.name})` : String(n), disabled: !!taken });
   }
+  countsPort.replaceChildren(...selectEl(ports).childNodes);
+  countsPort.value = String(home.ds.port);
 }
+
+countsSplitter.addEventListener("change", () => {
+  const home = point(countsHomeId);
+  const s = splittersAt(equipmentLocation(countsSplitter.value)).find((x) => x.id === countsSplitter.value);
+  const port = nextFreePort(s, home.id);
+  if (port === null) return renderCounts();
+  home.ds = { splitterId: s.id, port };
+  saveCounts();
+});
+
+countsPort.addEventListener("change", () => {
+  const home = point(countsHomeId);
+  if (usedPorts(homeSplitter(home), home.id).has(Number(countsPort.value))) return renderCounts();
+  home.ds.port = Number(countsPort.value);
+  saveCounts();
+});
 
 function saveCounts() {
   savePlan();

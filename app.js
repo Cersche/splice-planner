@@ -8,16 +8,32 @@ const START_TYPES = {
   cabinet: "Cabinet",
 };
 
-let plan = loadPlan();
+let plan = migratePlan(loadPlan());
 
 function newPlan(startPoint) {
   return {
     createdAt: new Date().toISOString(),
-    // Ordered list of points along the route; the first is the start.
+    // Every location on the route; the first is the start.
     points: [startPoint],
-    // Cables between points, filled in by the route-building step.
+    // Paths join each location to the one feeding it: the lines on the
+    // route. A path can hold conduit details.
+    paths: [],
+    // Cable spans riding the paths, at most one per path.
     cables: [],
+    // Imported homes not yet fed from a location.
+    unassigned: [],
+    // Patches between equipment ports and fibers at a location.
+    xconnects: [],
   };
+}
+
+// Plans saved before paths existed: each cable span was its own path.
+function migratePlan(p) {
+  if (!p) return p;
+  if (!Array.isArray(p.paths)) p.paths = (p.cables || []).map((c) => ({ id: makeId(), from: c.from, to: c.to }));
+  p.unassigned = p.unassigned || [];
+  p.xconnects = p.xconnects || [];
+  return p;
 }
 
 function makeId() {
@@ -88,12 +104,15 @@ otherForm.addEventListener("submit", (e) => {
   startRoute({ type: "other", label });
 });
 
-document.getElementById("other-cancel").addEventListener("click", () => {
+function cancelOther() {
   otherForm.hidden = true;
   otherName.value = "";
   otherKind.value = "handhole";
   otherNameRow.hidden = true;
-});
+}
+
+document.getElementById("other-cancel").addEventListener("click", cancelOther);
+otherForm.prepend(xButton(cancelOther));
 
 function startRoute({ type, label }) {
   plan = newPlan({ id: makeId(), type, label, name: label, equipment: [] });
@@ -159,14 +178,14 @@ function swatch(color, small) {
 }
 
 // --- Route ---
-// The route is point to point: every cable runs from one location to a
-// destination, and any location can feed more than one (branching).
-// Customer NIDs are end points.
+// The route is point to point: every location is fed from one other
+// location along a path, and any location can feed more than one
+// (branching). Customer NIDs are end points.
 //
-// Each entry in plan.cables is one span between two locations. A span
-// with `through` set ("pass" or "storage") is the same physical cable as
-// the span arriving at its `from` location, so one cable can run from
-// Handhole A through Handhole B to Handhole C.
+// A path may carry a cable span (plan.cables, matched to the path by
+// from/to). A span with `through` set ("pass" or "storage") is the same
+// physical cable as the span arriving at its `from` location, so one
+// cable can run from Handhole A through Handhole B to Handhole C.
 
 const STOP_TYPES = {
   splice: "Splice",
@@ -179,16 +198,23 @@ const STOP_TYPES = {
   other: "Other",
 };
 
+// Locations offered by the + button, in menu order.
+const ADD_TYPES = ["handhole", "pedestal", "vault", "manhole", "splice", "cabinet"];
+
 // Standard loose-tube cable counts, and smaller counts for drops to a NID.
 const FIBER_COUNTS = [12, 24, 48, 72, 96, 144, 216, 288, 432];
 const DROP_COUNTS = [1, 2, 4, 6, 12];
+const CABLE_SIZES = [1, 2, 4, 6, 12, 24, 48, 72, 96, 144, 216, 288, 432];
 const SPLITTER_RATIOS = ["1x2", "1x4", "1x8", "1x16", "1x32"];
+
+// Tails come pre-attached to a splitter or terminal; otherwise they are
+// entered like any other cable.
+const CABLE_KINDS = { cable: "Cable", "splitter-tail": "Splitter tail", "terminal-tail": "Terminal tail" };
 
 const tree = document.getElementById("route-tree");
 const menu = document.getElementById("context-menu");
-const wizard = document.getElementById("wizard");
 
-// The location the menu or wizard is working on.
+// The location the menu or a dialog is working on.
 let selectedId = null;
 
 document.getElementById("back-to-splash").addEventListener("click", () => {
@@ -196,7 +222,7 @@ document.getElementById("back-to-splash").addEventListener("click", () => {
   plan = null;
   savePlan();
   closeMenu();
-  closeWizard();
+  closePanels();
   otherForm.hidden = true;
   otherName.value = "";
   show("splash");
@@ -204,6 +230,19 @@ document.getElementById("back-to-splash").addEventListener("click", () => {
 
 function point(id) {
   return plan.points.find((p) => p.id === id);
+}
+
+function childPaths(id) {
+  return plan.paths.filter((x) => x.from === id);
+}
+
+function incomingPath(id) {
+  return plan.paths.find((x) => x.to === id);
+}
+
+// The cable span on a path, if one has been placed.
+function pathCable(path) {
+  return plan.cables.find((c) => c.to === path.to);
 }
 
 function childCables(id) {
@@ -215,11 +254,6 @@ function incomingCable(id) {
 }
 
 const THROUGH_LABELS = { pass: "passes through", storage: "slack stored" };
-
-// Next "Cable n" name, counting whole cables, not spans.
-function nextCableName() {
-  return `Cable ${plan.cables.filter((c) => !c.through).length + 1}`;
-}
 
 // The first span of the physical cable this span belongs to.
 function cableStart(c) {
@@ -237,6 +271,28 @@ function cableSpans(c) {
   }
 }
 
+function cableKind(c) {
+  return cableStart(c).kind || "cable";
+}
+
+// Drops to homes are listed with the homes, not with the cables.
+function isDrop(c) {
+  const to = point(c.to);
+  return to && to.type === "nid" && !c.through;
+}
+
+// Next free "Cable n", "Drop n", "Splitter tail n" ... name.
+function nextCableName(kind, toHome) {
+  const prefix = toHome && kind === "cable" ? "Drop" : CABLE_KINDS[kind];
+  const re = new RegExp(`^${prefix} (\\d+)$`);
+  let n = 0;
+  for (const c of plan.cables) {
+    const m = re.exec(c.name || "");
+    if (m) n = Math.max(n, Number(m[1]));
+  }
+  return `${prefix} ${n + 1}`;
+}
+
 function typeLabel(type) {
   return STOP_TYPES[type] || "Other";
 }
@@ -248,23 +304,29 @@ function autoName(type) {
   return `${short} ${n}`;
 }
 
+// The splice model for the current render, so cable labels are worked
+// out once per draw.
+let routeModel = null;
+
 function renderRoute() {
+  routeModel = buildSpliceModel();
   tree.innerHTML = "";
   tree.append(branchEl(plan.points[0]));
+  updateUnassignedButton();
 }
 
 function branchEl(p) {
-  const branch = document.createElement("div");
-  branch.className = "branch";
-  branch.append(stopEl(p));
-  const cables = childCables(p.id);
-  if (cables.length) {
-    const kids = document.createElement("div");
-    kids.className = "children";
-    for (const c of cables) {
-      const child = document.createElement("div");
-      child.className = "child";
-      child.append(cableEl(c), branchEl(point(c.to)));
+  const branch = el("div", "branch");
+  const wrap = el("div", "stop-wrap");
+  wrap.append(stopEl(p));
+  if (p.type !== "nid") wrap.append(plusEl(p));
+  branch.append(wrap);
+  const paths = childPaths(p.id);
+  if (paths.length) {
+    const kids = el("div", "children");
+    for (const path of paths) {
+      const child = el("div", "child");
+      child.append(pathEl(path, routeModel), branchEl(point(path.to)));
       kids.append(child);
     }
     branch.append(kids);
@@ -279,7 +341,9 @@ function stopEl(p) {
     (p.id === selectedId ? " selected" : "");
   const type = document.createElement("div");
   type.className = "type";
-  type.textContent = isStart ? `Start · ${typeLabel(p.type)}` : typeLabel(p.type);
+  const label = typeLabel(p.type);
+  // "Start · Cabinet" over "Cabinet" says it twice.
+  type.textContent = isStart ? (p.name === label ? "Start" : `Start · ${label}`) : label;
   const name = document.createElement("div");
   name.className = "name";
   name.textContent = p.name;
@@ -315,147 +379,95 @@ function stopEl(p) {
   return el;
 }
 
-function cableEl(c) {
-  const el = document.createElement("button");
-  el.className = "cable" + (c.through ? " through" : "") + (c.id === openCableId ? " selected" : "");
-  const name = document.createElement("div");
-  name.className = "cable-name";
-  name.textContent = c.name || "Cable";
-  const size = document.createElement("div");
-  size.className = "cable-size";
-  size.textContent = c.fibers + "F" + (c.through ? " · continued" : "");
-  const line = document.createElement("div");
-  line.className = "line";
-  const tubes = document.createElement("div");
-  tubes.className = "tubes";
-  for (let t = 0; t < tubeCount(c.fibers); t++) tubes.append(swatch(colorAt(t), true));
-  el.append(name, size, line, tubes);
-  el.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openCable(c.id);
-  });
-  return el;
+function plusEl(p) {
+  const b = btnEl("+", (e) => openAddMenu(p.id, e), "add-next");
+  b.title = `Add a location after ${p.name}`;
+  b.setAttribute("aria-label", b.title);
+  return b;
 }
 
-// --- Cable details ---
+// --- Popup menus ---
 
-const cablePanel = document.getElementById("cable-panel");
-let openCableId = null;
-
-function openCable(id) {
-  closeMenu();
-  closeWizard();
-  selectedId = null;
-  openCableId = id;
-  const c = plan.cables.find((x) => x.id === id);
-  document.getElementById("cable-title").textContent = c.name || "Cable";
-  const tubes = tubeCount(c.fibers);
-  const spans = cableSpans(c);
-  const via = spans.slice(1).map((s) => `${point(s.from).name} (${THROUGH_LABELS[s.through]})`);
-  document.getElementById("cable-summary").textContent =
-    `${c.fibers} fibers, ${tubes} tube${tubes > 1 ? "s" : ""}. Runs from ${point(spans[0].from).name} to ` +
-    `${point(spans[spans.length - 1].to).name}` + (via.length ? `, via ${via.join(", ")}.` : ".");
-
-  const list = document.getElementById("cable-colors");
-  list.innerHTML = "";
-  const fibers = colorCode(c.fibers);
-  for (let t = 1; t <= tubes; t++) {
-    const row = document.createElement("div");
-    row.className = "tube-row";
-    const head = document.createElement("div");
-    head.className = "tube-head";
-    const tc = colorAt(t - 1);
-    head.append(swatch(tc), document.createTextNode(` Tube ${t} · ${tc.name}`));
-    const fiberWrap = document.createElement("div");
-    fiberWrap.className = "fibers";
-    for (const f of fibers.filter((x) => x.tube === t)) {
-      const cell = document.createElement("div");
-      cell.className = "fiber";
-      const num = document.createElement("span");
-      num.className = "num";
-      num.textContent = f.number;
-      cell.append(num, swatch(f.fiberColor), document.createTextNode(f.fiberColor.name));
-      fiberWrap.append(cell);
-    }
-    row.append(head, fiberWrap);
-    list.append(row);
+function openPopup(title, items, e) {
+  menu.innerHTML = "";
+  const head = el("div", "menu-head");
+  head.append(el("div", "menu-title", title), xButton(() => {
+    closeMenu();
+    selectedId = null;
+    renderRoute();
+  }));
+  menu.append(head);
+  for (const item of items) {
+    const b = btnEl(item.label, (ev) => {
+      ev.stopPropagation();
+      closeMenu();
+      item.run();
+    });
+    b.className = item.danger ? "danger" : "";
+    menu.append(b);
   }
-  cablePanel.hidden = false;
-  renderRoute();
-  cablePanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-
-function closeCable() {
-  cablePanel.hidden = true;
-  openCableId = null;
-}
-
-document.getElementById("cable-close").addEventListener("click", () => {
-  closeCable();
-  renderRoute();
-});
-
-document.getElementById("cable-rename").addEventListener("click", () => {
-  const c = plan.cables.find((x) => x.id === openCableId);
-  const id = c.id;
-  closeCable();
-  askName("Rename cable", c.name || "", (name) => {
-    for (const s of cableSpans(c)) s.name = name;
-    finish();
-    openCable(id);
-  });
-});
-
-document.getElementById("cable-insert").addEventListener("click", () => {
-  const c = plan.cables.find((x) => x.id === openCableId);
-  closeCable();
-  insertStop(c);
-});
-
-// --- Context menu ---
-
-function openMenu(id, e) {
-  // While moving a location, a tap picks where it's fed from instead.
-  if (moving) {
-    e.stopPropagation();
-    return finishMove(id);
-  }
-  closeWizard();
-  closeImport();
-  closeCounts();
-  closeSplice();
-  closeCheck();
-  closePrint();
-  closeCable();
-  selectedId = id;
-  const p = point(id);
-  document.getElementById("menu-title").textContent = p.name;
-  menu.querySelector('[data-action="destination"]').hidden = p.type === "nid";
-  menu.querySelector('[data-action="import"]').hidden = p.type === "nid";
-  menu.querySelector('[data-action="splices"]').hidden = p.type === "nid";
-  menu.querySelector('[data-action="remove-equipment"]').hidden = !(p.equipment || []).length;
-  menu.querySelector('[data-action="move"]').hidden = id === plan.points[0].id;
-  menu.querySelector('[data-action="rename"]').innerHTML = p.type === "nid" ? "&#9998; Address / lot" : "&#9998; Rename";
-  menu.querySelector('[data-action="counts"]').hidden = p.type !== "nid" && !splittersAt(p).length;
-  menu.querySelector('[data-action="remove"]').hidden = id === plan.points[0].id;
   menu.hidden = false;
   // Place the menu at the tap, kept inside the window.
   const x = Math.min(e.clientX, window.innerWidth - menu.offsetWidth - 8);
   const y = Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 8);
   menu.style.left = Math.max(8, x) + "px";
   menu.style.top = Math.max(8, y) + "px";
-  renderRoute();
-  e.stopPropagation();
 }
 
 function closeMenu() {
   menu.hidden = true;
 }
 
+// The menu on a location: everything but adding the next location,
+// which is on its + button.
+function openMenu(id, e) {
+  e.stopPropagation();
+  closePanels();
+  selectedId = id;
+  const p = point(id);
+  const home = p.type === "nid";
+  const isStart = id === plan.points[0].id;
+  const items = [];
+  if (home) {
+    items.push({ label: "# Counts (F2 / DS)", run: () => openCounts(id) });
+    items.push({ label: "✎ Address / lot", run: () => renameStop(id) });
+  } else {
+    items.push({ label: "⚙ Equipment", run: () => openEquipment(id) });
+    items.push({ label: `ⓘ ${p.type === "cabinet" ? "Cabinet" : "Location"} details`, run: () => openDetails(id) });
+    if (showsCrossConnects(p)) items.push({ label: "⇄ Cross-connects", run: () => openCrossConnects(id) });
+    items.push({ label: "☰ Splice sheet", run: () => openSpliceSheet(id) });
+    items.push({ label: "✎ Rename", run: () => renameStop(id) });
+  }
+  if (!isStart) {
+    items.push({ label: "⇄ Move (feed from somewhere else)", run: () => openMove(id) });
+    items.push({ label: "✕ Remove", danger: true, run: () => removeStop(id) });
+  }
+  openPopup(p.name, items, e);
+  renderRoute();
+}
+
+// The + menu: add the next location after this one.
+function openAddMenu(fromId, e) {
+  e.stopPropagation();
+  closePanels();
+  selectedId = fromId;
+  const items = ADD_TYPES.map((t) => ({ label: typeLabel(t), run: () => {
+    addLocation(fromId, t, autoName(t));
+    finish();
+  } }));
+  items.push({ label: "Home (Customer NID)…", run: () => addHomeForm(fromId) });
+  if (plan.unassigned.length) {
+    items.push({ label: `Homes from the unassigned list (${plan.unassigned.length})…`, run: () => openAssign(fromId) });
+  }
+  items.push({ label: "Other…", run: () => addOtherForm(fromId) });
+  openPopup(`Add after ${point(fromId).name}`, items, e);
+  renderRoute();
+}
+
 document.addEventListener("click", (e) => {
   if (!menu.hidden && !menu.contains(e.target)) {
     closeMenu();
-    if (wizard.hidden) {
+    if (formPanel.hidden) {
       selectedId = null;
       if (plan) renderRoute();
     }
@@ -465,205 +477,66 @@ document.addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     closeMenu();
-    closeWizard();
+    closePanels();
+    selectedId = null;
+    if (plan) renderRoute();
   }
 });
-
-menu.querySelectorAll("[data-action]").forEach((btn) => {
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    closeMenu();
-    const action = btn.dataset.action;
-    if (action === "destination") addDestination(selectedId);
-    if (action === "import") importHomes(selectedId);
-    if (action === "equipment") addEquipment(selectedId);
-    if (action === "counts") openCounts(selectedId);
-    if (action === "splices") openSpliceSheet(selectedId);
-    if (action === "remove-equipment") removeEquipment(selectedId);
-    if (action === "move") startMove(selectedId);
-    if (action === "rename") renameStop(selectedId);
-    if (action === "remove") removeStop(selectedId);
-  });
-});
-
-// --- Wizard ---
-// ask() shows one question with big buttons (or a name box) and
-// calls back with the answer.
-
-const wizardQuestion = document.getElementById("wizard-question");
-const wizardChoices = document.getElementById("wizard-choices");
-const wizardNameForm = document.getElementById("wizard-name-form");
-const wizardName = document.getElementById("wizard-name");
-let wizardOnName = null;
-
-function ask(question, choices, onChoose) {
-  wizard.hidden = false;
-  wizardQuestion.textContent = question;
-  wizardChoices.hidden = false;
-  wizardChoices.innerHTML = "";
-  wizardNameForm.hidden = true;
-  for (const c of choices) {
-    const b = document.createElement("button");
-    b.className = "big-btn" + (c.secondary ? " secondary" : "");
-    b.textContent = c.label;
-    b.addEventListener("click", () => onChoose(c.value));
-    wizardChoices.append(b);
-  }
-  wizard.scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-
-function askName(question, defaultName, onName) {
-  wizard.hidden = false;
-  wizardQuestion.textContent = question;
-  wizardChoices.hidden = true;
-  wizardNameForm.hidden = false;
-  document.getElementById("wizard-name-label").textContent = "Name";
-  wizardName.value = defaultName;
-  wizardOnName = onName;
-  wizardName.focus();
-  wizardName.select();
-}
-
-wizardNameForm.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const name = wizardName.value.trim();
-  if (name && wizardOnName) wizardOnName(name);
-});
-
-function closeWizard() {
-  wizard.hidden = true;
-  wizardOnName = null;
-}
 
 function finish() {
-  closeWizard();
+  closePanels();
+  closeMenu();
   selectedId = null;
   savePlan();
   renderRoute();
 }
 
-document.getElementById("wizard-cancel").addEventListener("click", () => {
-  closeWizard();
-  selectedId = null;
-  renderRoute();
-});
+// --- Adding locations ---
+// A new location gets a path from the one before it. A cable can be
+// placed on that path later, or not at all.
 
-// --- Actions ---
-
-function addDestination(fromId) {
-  const from = point(fromId);
-  const arriving = incomingCable(fromId);
-  // A cable can only carry on in one direction out of a location.
-  const canContinue = arriving && !childCables(fromId).some((c) => c.through);
-  let through = null;
-
-  if (canContinue) {
-    ask(`Which cable goes on from ${from.name}?`, [
-      { label: `${arriving.name} passes through`, value: "pass" },
-      { label: `${arriving.name} with slack stored here`, value: "storage" },
-      { label: "New cable (splice here)", value: "new", secondary: true },
-    ], (choice) => {
-      through = choice === "new" ? null : choice;
-      askType();
-    });
-  } else {
-    askType();
-  }
-
-  let homeLot = null;
-
-  function askType() {
-    const types = ["splice", "handhole", "cabinet", "nid", "other"];
-    ask(`Where does the cable from ${from.name} go?`,
-      types.map((t) => ({ label: typeLabel(t), value: t, secondary: t === "other" })),
-      (type) => {
-        // Other must be named; a home gets an address, or a lot number
-        // when the address isn't out yet.
-        if (type === "other") askName("Name this location", "", (name) => next(type, name));
-        else if (type === "nid") askHome((name, lot) => {
-          homeLot = lot;
-          next(type, name);
-        });
-        else next(type, autoName(type));
-      });
-  }
-
-  function next(type, name) {
-    if (!through) return askFibers(type, name);
-    const stop = { id: makeId(), type, label: typeLabel(type), name, equipment: [] };
-    if (homeLot) stop.lot = homeLot;
-    plan.points.push(stop);
-    plan.cables.push({ id: makeId(), name: arriving.name, from: fromId, to: stop.id, fibers: arriving.fibers, through });
-    finish();
-  }
-
-  function askFibers(type, name) {
-    const counts = type === "nid" ? DROP_COUNTS : FIBER_COUNTS;
-    ask(`How many fibers in the cable to ${name}?`,
-      counts.map((n) => ({ label: String(n), value: n })),
-      (fibers) => askName("Name this cable", nextCableName(), (cableName) => {
-        const stop = { id: makeId(), type, label: typeLabel(type), name, equipment: [] };
-        if (homeLot) stop.lot = homeLot;
-        plan.points.push(stop);
-        plan.cables.push({ id: makeId(), name: cableName, from: fromId, to: stop.id, fibers });
-        finish();
-      }));
-  }
+function addLocation(fromId, type, name, extra) {
+  const stop = { id: makeId(), type, label: typeLabel(type), name, equipment: [], ...extra };
+  plan.points.push(stop);
+  plan.paths.push({ id: makeId(), from: fromId, to: stop.id });
+  return stop;
 }
 
-function addEquipment(id) {
-  const p = point(id);
-  ask(`What equipment goes at ${p.name}?`,
-    [{ label: "Splitter", value: "splitter" }, { label: "Other", value: "other", secondary: true }],
-    (kind) => {
-      if (kind === "other") askName("Name the equipment", "", (name) => save({ type: "other", name }));
-      else ask("What size splitter?",
-        SPLITTER_RATIOS.map((r) => ({ label: r, value: r })),
-        (ratio) => {
-          const eq = { id: makeId(), type: "splitter", ratio, name: `Splitter ${ratio}`, f2: null };
-          askF2(p, eq, () => save(eq));
-        });
-    });
-
-  function save(eq) {
-    p.equipment = p.equipment || [];
-    p.equipment.push({ id: makeId(), ...eq });
-    finish();
-  }
+function addOtherForm(fromId) {
+  openForm(`Add a location after ${point(fromId).name}`, (body, foot) => {
+    const name = inputEl("text", "", { placeholder: "e.g. Building MPOE" });
+    body.append(fieldEl("What is it?", name));
+    formButtons(foot, () => {
+      if (!name.value.trim()) return "Type what the location is.";
+      addLocation(fromId, "other", name.value.trim());
+      finish();
+    }, "Add");
+  });
 }
 
-// Drop a new location in the middle of a span: A -> C becomes A -> B -> C.
-function insertStop(span) {
-  const types = ["splice", "handhole", "cabinet", "other"];
-  ask(`What is the new stop on ${span.name}?`,
-    types.map((t) => ({ label: typeLabel(t), value: t, secondary: t === "other" })),
-    (type) => {
-      if (type === "other") askName("Name this location", "", (name) => askWhat(type, name));
-      else askWhat(type, autoName(type));
-    });
+// Drop sizes for a home, with "none" for when the drop isn't known yet.
+function dropSelect(value) {
+  return selectEl([...DROP_COUNTS.map((n) => ({ value: n, label: `${n}F drop` })),
+    { value: 0, label: "No drop cable yet" }], value);
+}
 
-  function askWhat(type, name) {
-    ask(`What happens to ${span.name} at ${name}?`, [
-      { label: "Passes through", value: "pass" },
-      { label: "Slack stored", value: "storage" },
-      { label: "Spliced here", value: "splice" },
-    ], (what) => {
-      if (what === "splice") askName("Name the cable leaving the splice", nextCableName(), (cableName) => save(type, name, null, cableName));
-      else save(type, name, what, span.name);
-    });
-  }
-
-  function save(type, name, through, cableName) {
-    const stop = { id: makeId(), type, label: typeLabel(type), name, equipment: [] };
-    const after = { id: makeId(), name: cableName, from: stop.id, to: span.to, fibers: span.fibers };
-    if (through) after.through = through;
-    plan.points.push(stop);
-    plan.cables.push(after);
-    span.to = stop.id;
-    // A splice starts a new cable, so the rest of the old run takes its name.
-    for (const s of cableSpans(after)) s.name = cableName;
-    finish();
-  }
+function addHomeForm(fromId) {
+  openForm(`Add a home after ${point(fromId).name}`, (body, foot) => {
+    const address = inputEl("text", "", { placeholder: "e.g. 123 Main St" });
+    const lot = inputEl("text", "", { placeholder: "e.g. 12" });
+    const drop = dropSelect(1);
+    body.append(fieldEl("Address", address, "Leave blank if it doesn't have one yet."),
+      fieldEl("Lot number", lot), fieldEl("Drop cable", drop));
+    formButtons(foot, () => {
+      const a = address.value.trim();
+      const l = cleanLot(lot.value);
+      if (!a && !l) return "Enter an address, a lot number, or both.";
+      const stop = addLocation(fromId, "nid", a || lotName(l), l ? { lot: l } : {});
+      const fibers = Number(drop.value);
+      if (fibers) plan.cables.push({ id: makeId(), name: nextCableName("cable", true), from: fromId, to: stop.id, fibers });
+      finish();
+    }, "Add");
+  });
 }
 
 // --- Homes: address or lot ---
@@ -682,47 +555,33 @@ function hasAddress(p) {
   return !p.lot || p.name !== lotName(p.lot);
 }
 
-function askHome(onDone) {
-  ask("What do you have for this home?", [
-    { label: "Address", value: "address" },
-    { label: "Lot number", value: "lot" },
-    { label: "Both", value: "both", secondary: true },
-  ], (v) => {
-    if (v === "address") askName("Customer address", "", (name) => onDone(name, null));
-    else askName("Lot number", "", (lot) => {
-      if (v === "lot") onDone(lotName(cleanLot(lot)), cleanLot(lot));
-      else askName("Customer address", "", (name) => onDone(name, cleanLot(lot)));
-    });
-  });
-}
-
-function editHome(p) {
-  ask(`What do you want to change for ${p.name}?`, [
-    { label: hasAddress(p) ? "Address" : "Add the address", value: "address" },
-    { label: p.lot ? "Lot number" : "Add a lot number", value: "lot", secondary: true },
-  ], (v) => {
-    if (v === "address") {
-      askName("Customer address", hasAddress(p) ? p.name : "", (name) => {
-        p.name = name;
-        finish();
-      });
-    } else {
-      askName("Lot number", p.lot || "", (lot) => {
-        const addressed = hasAddress(p);
-        p.lot = cleanLot(lot);
-        if (!addressed) p.name = lotName(p.lot);
-        finish();
-      });
-    }
-  });
-}
-
 function renameStop(id) {
   const p = point(id);
-  if (p.type === "nid") return editHome(p);
-  askName(`Rename ${p.name}`, p.name, (name) => {
-    p.name = name;
-    finish();
+  if (p.type === "nid") {
+    return openForm(`Address / lot for ${p.name}`, (body, foot) => {
+      const address = inputEl("text", hasAddress(p) ? p.name : "");
+      const lot = inputEl("text", p.lot || "");
+      body.append(fieldEl("Address", address), fieldEl("Lot number", lot));
+      formButtons(foot, () => {
+        const a = address.value.trim();
+        const l = cleanLot(lot.value);
+        if (!a && !l) return "Enter an address, a lot number, or both.";
+        p.name = a || lotName(l);
+        if (l) p.lot = l;
+        else delete p.lot;
+        finish();
+      });
+    });
+  }
+  openForm(`Rename ${p.name}`, (body, foot) => {
+    const name = inputEl("text", p.name);
+    body.append(fieldEl("Name", name));
+    formButtons(foot, () => {
+      if (!name.value.trim()) return "Enter a name.";
+      p.name = name.value.trim();
+      finish();
+    });
+    name.select();
   });
 }
 
@@ -732,7 +591,7 @@ function removeStop(id) {
   const doomed = new Set();
   (function collect(pid) {
     doomed.add(pid);
-    childCables(pid).forEach((c) => collect(c.to));
+    childPaths(pid).forEach((x) => collect(x.to));
   })(id);
   const extra = doomed.size - 1;
   const msg = extra ? `Remove ${p.name} and the ${extra} location(s) fed from it?` : `Remove ${p.name}?`;
@@ -742,9 +601,12 @@ function removeStop(id) {
     return;
   }
   plan.points = plan.points.filter((x) => !doomed.has(x.id));
+  plan.paths = plan.paths.filter((x) => !doomed.has(x.to));
   plan.cables = plan.cables.filter((c) => !doomed.has(c.to));
+  plan.xconnects = plan.xconnects.filter((x) => !doomed.has(x.at));
   finish();
 }
 
-// Resume an in-progress plan, otherwise show the splash.
-show(plan ? "route" : "splash");
+// Resume an in-progress plan, otherwise show the splash. Waits for the
+// other scripts, which the route drawing uses.
+document.addEventListener("DOMContentLoaded", () => show(plan ? "route" : "splash"));

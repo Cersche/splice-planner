@@ -394,7 +394,7 @@ h1 { font-size: 2.75rem; margin: 0 0 8px; }
 .tile-label { font-weight: 700; font-size: 11pt; margin-bottom: 4px; }
 .tile-view { position: relative; overflow: hidden; width: 16.2in; height: 9.6in; border: 1px solid #999; }
 .tile-view .route-tree { position: absolute; overflow: visible; padding: 8px; }
-.map-tiles + .sheet-block { break-before: page; }
+.map-tiles:not(:empty) { break-after: page; }
 .move-banner {
   display: flex;
   align-items: center;
@@ -417,3 +417,147 @@ h1 { font-size: 2.75rem; margin: 0 0 8px; }
   margin-bottom: 12px;
 }
 .other-form label { margin-top: 4px; }
+
+/* --- Beta batch 1 --- */
+
+/* Start screen: small location icons on the Other button */
+.icon-row { display: flex; gap: 10px; justify-content: center; }
+.icon-row svg { width: 34px; height: 34px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.other-form { position: relative; }
+
+/* Dialogs sit over the route, with an X in the corner */
+.wizard {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(820px, calc(100vw - 24px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  margin: 0;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+.wizard.wide { width: min(1100px, calc(100vw - 24px)); max-width: none; }
+.wizard h3 { padding-right: 48px; }
+.screen:has(.wizard:not([hidden]))::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  background: rgba(20, 28, 40, 0.45);
+}
+.dialog-x {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  font-size: 1.8rem;
+  line-height: 1;
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.dialog-x:hover { background: #eef2f6; border-color: var(--border); color: var(--text); }
+.context-menu .menu-head { display: flex; align-items: center; justify-content: space-between; }
+.context-menu .dialog-x { position: static; width: 36px; height: 36px; padding: 0; text-align: center; }
+
+/* Forms */
+.field-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-weight: 600; }
+.field-row .field-label { font-size: 0.95rem; }
+.field-row input, .field-row select, .field-row textarea, .extra-row input, .range-row input, .port-cell input {
+  font: inherit;
+  font-weight: 400;
+  font-size: 1.05rem;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+.field-hint { font-weight: 400; font-size: 0.9rem; color: var(--muted); }
+.field-hint.error { color: #b3261e; font-weight: 600; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 16px; }
+.form-section { margin: 18px 0 10px; font-size: 1.15rem; border-top: 1px solid var(--border); padding-top: 14px; }
+.wizard h3 + #form-body > .form-section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+.row { flex-wrap: wrap; align-items: center; }
+.push-left { margin-right: auto; }
+.btn.danger { color: #b3261e; }
+.btn.small { padding: 4px 10px; font-size: 0.95rem; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Fiber picker */
+.range-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 10px; }
+.range-row input { width: 80px; }
+.range-info { flex-basis: 100%; color: var(--muted); font-size: 0.95rem; }
+.color-details { margin-top: 16px; }
+.color-details summary { cursor: pointer; font-weight: 700; padding: 6px 0; }
+.cable-annotation { font-weight: 700; }
+
+/* Route: + to add the next location */
+.stop-wrap { position: relative; display: flex; align-items: center; flex: 0 0 auto; }
+.add-next {
+  position: absolute;
+  right: -17px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+  background: var(--surface);
+  border: 3px solid var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.add-next:hover { background: var(--accent); color: #fff; }
+.sheet-diagram .add-next, .tile-view .add-next { display: none; }
+
+/* Paths: dashed when there's no cable, a gray pipe around conduit */
+.cable { width: 170px; padding-left: 20px; }
+.cable-name.muted { color: var(--muted); font-weight: 600; }
+.cable.empty .line { background: repeating-linear-gradient(90deg, var(--muted) 0 10px, transparent 10px 16px); height: 4px; }
+.cable.empty .line::after { border-left-color: var(--muted); }
+.cable.conduit .line { box-shadow: 0 0 0 5px #c9ced6; }
+.conduit-label { font-size: 0.85rem; font-weight: 700; color: #4d5866; margin-bottom: 4px; }
+.cable-note {
+  font-size: 0.8rem;
+  color: var(--text);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* Equipment */
+.eq-list { display: grid; gap: 10px; }
+.eq-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.eq-name { font-weight: 700; font-size: 1.1rem; }
+.eq-meta { color: var(--muted); }
+.eq-actions { margin-left: auto; display: flex; gap: 8px; }
+.inline-field { display: flex; align-items: center; gap: 6px; font-weight: 700; }
+.inline-field input { width: 90px; font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; }
+.cards { display: grid; gap: 10px; margin: 12px 0; }
+.card-box { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.card-box summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
+.card-top { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.card-top .field-row { flex: 1; min-width: 200px; }
+.port-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.port-cell { display: flex; gap: 4px; }
+.port-cell input { width: 100%; min-width: 0; padding: 6px 8px; }
+.extra-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.extra-row input { flex: 1; min-width: 0; }
+.xc-block h4 { margin: 10px 0 4px; }
+
+/* Print additions */
+.sheet-detail { font-size: 10pt; }
+.splice-details { margin: 0 0 4px; font-size: 10pt; }
+.sheet-table td.wrap { white-space: normal; }
+.print-sheet .cable-note { -webkit-line-clamp: unset; }
