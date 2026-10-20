@@ -108,13 +108,14 @@ function pathEl(path, model) {
   const c = pathCable(path);
   const cd = conduitLabel(path.conduit);
   const b = el("button", "cable" + (c ? "" : " empty") + (c && c.through ? " through" : "") +
-    (path.conduit && path.conduit.size ? " conduit" : "") + (path.to === openPathId ? " selected" : ""));
+    (path.conduit && path.conduit.size ? " conduit" : "") + (path.to === openPathId ? " selected" : "") +
+    (point(path.to).type === "nid" ? " drop" : "") + (c && phasePast(c) ? " past" : ""));
   b.type = "button";
   if (c) {
     const kind = cableKind(c);
     b.append(el("div", "cable-name", c.name || "Cable"),
       el("div", "cable-size", `${c.fibers}F` + (c.through ? " · continued" : "") +
-        (kind !== "cable" ? ` · ${CABLE_KINDS[kind]}` : "")));
+        (kind !== "cable" ? ` · ${CABLE_KINDS[kind]}` : "") + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
     if (!c.through && !isDrop(c) && model) {
       const note = cableNote(model, c);
       if (note) {
@@ -189,6 +190,8 @@ function openPath(toId) {
     const fibers = selectEl(CABLE_SIZES.map((n) => ({ value: n, label: `${n}F` })),
       c && !c.through ? c.fibers : toHome ? 1 : 12);
     newBox.append(fieldEl("Type", kind), fieldEl("Name", name), fieldEl("Size", fibers));
+    const phaseSel = phaseSelect(c);
+    if (phaseSel) newBox.append(fieldEl("Phase", phaseSel));
     body.append(newBox);
 
     const contNote = el("p", "hint");
@@ -293,13 +296,21 @@ function openPath(toId) {
 
     foot.append(btnEl("+ Add a stop on this path", () => insertStopForm(path), "btn ghost push-left"));
     if (c) foot.append(btnEl("Remove cable", () => {
-      if (removeCableFrom(c)) finish();
+      const text = removeCableText(c);
+      finish();
+      withUndo(text, () => removeCableFrom(c));
     }, "btn ghost danger"));
     formButtons(foot, () => {
+      // Taking the cable off is the one change here worth an Undo.
+      const before = JSON.stringify(plan);
+      const removing = c && mode.value === "none" ? removeCableText(c) : null;
       const problem = saveCable();
       if (problem) return problem;
+      const placed = pathCable(path);
+      if (phaseSel && placed) placed.phase = phaseSel.value;
       saveConduit();
       finish();
+      if (removing) offerUndo(removing, before);
     });
 
     function saveConduit() {
@@ -317,7 +328,7 @@ function openPath(toId) {
     function saveCable() {
       const m = mode.value;
       if (m === "none") {
-        if (c && !removeCableFrom(c)) return "Kept the cable.";
+        if (c) removeCableFrom(c);
         return "";
       }
       if (m === "pass" || m === "storage") {
@@ -431,17 +442,19 @@ function suggestPicks(model, c, inCable, outFibers) {
 }
 
 // Take a cable off its path, along with the rest of its run past here.
-// Returns false if the user backs out.
-function removeCableFrom(c) {
+function cableRunFrom(c) {
   const spans = cableSpans(c);
-  const doomed = spans.slice(spans.indexOf(c));
-  const further = doomed.slice(1).map((s) => point(s.to).name);
-  const msg = further.length
-    ? `Remove ${c.name} from here on? It also runs on to ${further.join(", ")}.`
-    : `Remove ${c.name} from this path?`;
-  if (!confirm(msg)) return false;
+  return spans.slice(spans.indexOf(c));
+}
+
+function removeCableText(c) {
+  const further = cableRunFrom(c).slice(1).map((s) => point(s.to).name);
+  return further.length ? `Removed ${c.name} here and on to ${further.join(", ")}.` : `Removed ${c.name}.`;
+}
+
+function removeCableFrom(c) {
+  const doomed = cableRunFrom(c);
   plan.cables = plan.cables.filter((x) => !doomed.includes(x));
-  return true;
 }
 
 // Every fiber of a cable with its tube and color.

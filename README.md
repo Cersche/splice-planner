@@ -38,13 +38,20 @@ you have signal and it will work offline after that.
      sheets follow what you connect.
    - **Home counts (F2 / DS)**: tick homes, pick a splitter and first port,
      and fill DS counts in order.
-5. **Import homes** brings in an address list for the whole job. Homes wait
+5. Tap the project title at the top to name the job. To build in phases,
+   pick **+ Add a phase** next to it: what's drawn so far becomes Phase 1.
+   Choosing a phase shows that phase and the ones before it; splice sheets
+   mark earlier work as "Existing".
+6. **Import homes** brings in an address list for the whole job. Homes wait
    on the unassigned list until you pick the location that feeds them.
-6. **Check plan** lists problems and warnings. Tap one to find it.
-7. **Save plan** downloads the plan as a file. **Open plan** loads one back.
-8. **Print / Save PDF (11x17)** prints the field sheet: the map, details,
+7. **Check plan** lists problems and warnings. Tap one to find it.
+8. **Save plan** downloads the plan as a file. **Open plan** loads one back.
+9. **Print / Save PDF (11x17)** prints the field sheet: the map, details,
    cables, conduit, splitters, homes, color code and a splice sheet for
    every closure.
+
+Nothing asks "Are you sure?": removals happen right away with an **Undo**
+bar at the bottom. **Start over** asks for a second tap.
 
 Plans are saved in the browser as you work. Use **Save plan** to keep a copy
 or send it to someone else.

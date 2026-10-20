@@ -417,10 +417,10 @@ function openAssign(fromId) {
         tdBox.append(box);
         const tdDel = el("td");
         tdDel.append(btnEl("×", () => {
-          if (!confirm(`Take ${h.name} off the list?`)) return;
-          plan.unassigned = plan.unassigned.filter((x) => x !== h);
           picked.delete(h.id);
-          savePlan();
+          withUndo(`Took ${h.name} off the list.`, () => {
+            plan.unassigned = plan.unassigned.filter((x) => x !== h);
+          });
           if (!plan.unassigned.length) return finish();
           render();
         }, "btn ghost small"));

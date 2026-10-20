@@ -187,7 +187,8 @@ function buildSpliceModel() {
     const here = splittersAt(L);
     for (const s of here) {
       const from = s.f2 && c && s.f2 <= c.fibers ? fiberLabel(cableStart(c), s.f2) : source(L, `split-in:${s.id}`);
-      rows.push({ from, to: { text: `${s.name} input`, colors: "" }, note: s.f2 ? `F2 ${s.f2}` : "F2 not set", key: `split:${s.id}:in` });
+      rows.push({ from, to: { text: `${s.name} input`, colors: "" }, note: s.f2 ? `F2 ${s.f2}` : "F2 not set", key: `split:${s.id}:in`,
+        phase: Math.max(phaseIdx(s), c ? phaseIdx(c) : 0) });
     }
     for (const d of childCables(locId).filter((x) => !x.through)) {
       for (const f of childFibers(d)) {
@@ -202,7 +203,10 @@ function buildSpliceModel() {
           const x = crossConnectFor(`fiber:${d.id}:${f.out}`);
           if (x) from = { text: `Patched: ${endpointLabel(x.other)}`, colors: "" };
         }
-        rows.push({ from, to: fiberLabel(d, f.out), note: describe(f.item), key: `fiber:${d.id}:${f.out}` });
+        // A splice belongs to the later phase of the two things it joins.
+        const sp = here.find((s) => f.item.startsWith(`port:${s.id}:`));
+        const phase = Math.max(phaseIdx(d), sp ? phaseIdx(sp) : c ? phaseIdx(c) : 0);
+        rows.push({ from, to: fiberLabel(d, f.out), note: describe(f.item), key: `fiber:${d.id}:${f.out}`, phase });
       }
     }
     const through = childCables(locId).filter((x) => x.through)
@@ -216,15 +220,25 @@ function buildSpliceModel() {
 // Locations that get a splice sheet: anything but a home with work on it.
 function spliceLocations(model) {
   return plan.points.filter((p) => {
-    if (p.type === "nid") return false;
+    if (p.type === "nid" || !phaseShown(p)) return false;
     const { rows, through } = model.rowsAt(p.id);
-    return rows.length || through.length || crossConnectsAt(p.id).length;
+    return rows.some(rowPhaseShown) || through.length || crossConnectsAt(p.id).some(phaseShown);
   });
+}
+
+// With one phase on screen, splices from later phases are left off and
+// those from earlier ones are marked existing.
+function rowPhaseShown(r) {
+  const v = viewIdx();
+  return v === null || r.phase <= v;
 }
 
 // One location's splice table, for the screen or the printed sheet.
 function spliceTable(model, locId) {
-  const { rows, through } = model.rowsAt(locId);
+  const all = model.rowsAt(locId);
+  const rows = all.rows.filter(rowPhaseShown);
+  const through = all.through;
+  const v = viewIdx();
   const wrap = document.createElement("div");
   const xc = crossConnectTable(locId);
   for (const t of through) {
@@ -244,11 +258,13 @@ function spliceTable(model, locId) {
   const table = document.createElement("table");
   table.className = "sheet-table splice-table";
   const thead = document.createElement("thead");
-  thead.innerHTML = `<tr>${trays ? "<th>Tray</th><th>Slot</th>" : ""}<th>From</th><th>Color</th><th></th><th>To</th><th>Color</th><th>For</th><th>Done</th></tr>`;
+  thead.innerHTML = `<tr>${hasPhases() ? "<th>Phase</th>" : ""}${trays ? "<th>Tray</th><th>Slot</th>" : ""}<th>From</th><th>Color</th><th></th><th>To</th><th>Color</th><th>For</th><th>Done</th></tr>`;
   table.append(thead);
   for (const r of rows) {
     const tr = document.createElement("tr");
     if (r.from.missing) tr.className = "problem";
+    const existing = v !== null && r.phase < v;
+    if (existing) tr.classList.add("existing");
     const cell = (text, cls) => {
       const td = document.createElement("td");
       if (cls) td.className = cls;
@@ -262,6 +278,7 @@ function spliceTable(model, locId) {
       td.append(document.createTextNode(f.colors));
       return td;
     };
+    if (hasPhases()) tr.append(cell(existing ? `Existing · ${phaseName(r.phase)}` : phaseName(r.phase), existing ? "phase-cell old" : "phase-cell"));
     if (trays) {
       const ts = trays.get(r.key);
       tr.append(cell(ts ? String(ts.tray) : "", "mono"), cell(ts ? String(ts.slot) : "", "mono"));

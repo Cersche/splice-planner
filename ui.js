@@ -136,3 +136,53 @@ function formButtons(foot, onSave, saveLabel = "Save") {
   }, "btn ghost"), save);
   return save;
 }
+
+// --- Undo bar ---
+// No Yes/No popups: things happen right away, and a bar at the bottom
+// offers to take them back for a few seconds.
+
+const undoBar = el("div", "undo-bar");
+undoBar.hidden = true;
+undoBar.setAttribute("role", "status");
+document.body.append(undoBar);
+let undoTimer = null;
+
+function showNote(text, undo) {
+  clearTimeout(undoTimer);
+  undoBar.innerHTML = "";
+  undoBar.append(el("span", "undo-text", text));
+  if (undo) {
+    undoBar.append(btnEl("Undo", () => {
+      undoBar.hidden = true;
+      undo();
+    }, "undo-btn"));
+  }
+  const x = btnEl("×", () => (undoBar.hidden = true), "undo-x");
+  x.setAttribute("aria-label", "Dismiss");
+  undoBar.append(x);
+  undoBar.hidden = false;
+  undoTimer = setTimeout(() => (undoBar.hidden = true), undo ? 10000 : 6000);
+}
+
+// Snapshot the plan, do `act`, and offer Undo. Undo puts the whole plan
+// back and closes any open dialog, since it showed the old state.
+function withUndo(text, act) {
+  const before = JSON.stringify(plan);
+  const result = act();
+  savePlan();
+  renderRoute();
+  offerUndo(text, before);
+  return result;
+}
+
+function offerUndo(text, before) {
+  showNote(text, () => {
+    plan = migratePlan(JSON.parse(before));
+    savePlan();
+    closePanels();
+    closeMenu();
+    selectedId = null;
+    if (typeof show === "function") show("route");
+    showNote("Undone.");
+  });
+}

@@ -9,7 +9,7 @@ document.getElementById("save-plan").addEventListener("click", () => {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   const date = new Date().toISOString().slice(0, 10);
-  a.download = `${plan.points[0].name.replace(/[^\w-]+/g, "-")}-splice-plan-${date}.json`;
+  a.download = `${(plan.title || plan.points[0].name).replace(/[^\w-]+/g, "-")}-splice-plan-${date}.json`;
   document.body.append(a);
   a.click();
   a.remove();
@@ -33,18 +33,19 @@ openInput.addEventListener("change", () => {
       const data = JSON.parse(String(reader.result));
       loaded = data.plan || data;
     } catch {
-      return alert("That file isn't a splice plan. Pick a .json file saved from this app.");
+      return showNote("That file isn't a splice plan. Pick a .json file saved from this app.");
     }
     if (!Array.isArray(loaded.points) || !loaded.points.length || !Array.isArray(loaded.cables)) {
-      return alert("That file isn't a splice plan. Pick a .json file saved from this app.");
+      return showNote("That file isn't a splice plan. Pick a .json file saved from this app.");
     }
-    if (plan && !confirm("Open this plan? The plan on screen will be replaced. Save it first if you need it.")) return;
+    const before = plan && JSON.stringify(plan);
     plan = migratePlan(loaded);
     savePlan();
     closeMenu();
     closePanels();
     selectedId = null;
     show("route");
+    if (before) offerUndo(`Opened ${file.name}. The plan that was on screen is replaced.`, before);
   };
   reader.readAsText(file);
 });
