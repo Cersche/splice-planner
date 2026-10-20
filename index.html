@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Splice Planner</title>
+  <meta name="theme-color" content="#0b6bcb">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Splice Plan">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="app">
+    <!-- Splash: choose where the route begins -->
+    <section id="screen-splash" class="screen">
+      <h1>Welcome!</h1>
+      <p class="subtitle">Choose starting location</p>
+
+      <div class="start-buttons">
+        <button class="big-btn" data-start="cabinet">
+          <span class="icon" aria-hidden="true">&#9638;</span>
+          Cabinet
+        </button>
+        <button class="big-btn" data-start="splice">
+          <span class="icon" aria-hidden="true">&#9673;</span>
+          Splice
+        </button>
+        <button class="big-btn secondary" data-start="other">
+          <span class="icon" aria-hidden="true">&#9998;</span>
+          Other
+        </button>
+      </div>
+
+      <button class="btn ghost open-saved" data-open-plan>&#128194; Open a saved plan</button>
+
+      <form id="other-form" class="other-form" hidden>
+        <label for="other-name">Name your starting point</label>
+        <input id="other-name" type="text" placeholder="e.g. Pedestal, Handhole, Building MPOE" autocomplete="off" required>
+        <div class="row">
+          <button type="button" class="btn ghost" id="other-cancel">Cancel</button>
+          <button type="submit" class="btn">Start here</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Route: point-to-point tree that reads left to right -->
+    <section id="screen-route" class="screen" hidden>
+      <header class="route-header">
+        <button class="btn ghost" id="back-to-splash">&larr; Start over</button>
+        <h2>Route</h2>
+        <div class="header-actions">
+          <button class="btn ghost" id="check-plan">&#10003; Check plan <span id="check-badge" class="badge" hidden></span></button>
+          <button class="btn ghost" id="save-plan">&#128190; Save plan</button>
+          <button class="btn ghost" data-open-plan>&#128194; Open plan</button>
+        </div>
+        <button class="btn print-btn" id="print-plan">&#128438; Print / Save PDF (11x17)</button>
+      </header>
+      <p class="hint">Tap any location to add a destination or equipment.</p>
+
+      <div id="move-banner" class="move-banner" hidden>
+        <span id="move-text"></span>
+        <button type="button" class="btn ghost" id="move-cancel">Cancel move</button>
+      </div>
+
+      <div id="route-tree" class="route-tree"></div>
+
+      <!-- Menu that opens on a location (tap or right-click) -->
+      <div id="context-menu" class="context-menu" hidden>
+        <div class="menu-title" id="menu-title"></div>
+        <button data-action="destination">&#10140; Add destination</button>
+        <button data-action="import">&#8962; Import homes (CSV)</button>
+        <button data-action="equipment">&#9881; Add equipment</button>
+        <button data-action="remove-equipment">&#9881; Remove equipment</button>
+        <button data-action="splices">&#9776; Splice sheet</button>
+        <button data-action="counts"># Counts (F2 / DS)</button>
+        <button data-action="rename">&#9998; Rename</button>
+        <button data-action="move">&#8644; Move (feed from somewhere else)</button>
+        <button data-action="remove" class="danger">&#10005; Remove</button>
+      </div>
+
+      <!-- Cable details: name, size and the color code the app works out -->
+      <div id="cable-panel" class="wizard" hidden>
+        <h3 id="cable-title"></h3>
+        <p id="cable-summary" class="hint"></p>
+        <div id="cable-colors" class="tube-list"></div>
+        <div class="row">
+          <button type="button" class="btn ghost" id="cable-insert">&#10010; Add a stop on this cable</button>
+          <button type="button" class="btn ghost" id="cable-rename">&#9998; Rename cable</button>
+          <button type="button" class="btn ghost" id="cable-resize">&#8597; Change size</button>
+          <button type="button" class="btn" id="cable-close">Close</button>
+        </div>
+      </div>
+
+      <!-- Import homes: CSV address list, cleaned up step by step -->
+      <div id="import-panel" class="wizard" hidden>
+        <p class="step-count" id="import-step-count"></p>
+
+        <div id="import-step-file">
+          <h3 id="import-title"></h3>
+          <label class="big-btn file-btn">
+            Choose CSV file
+            <input type="file" id="import-file" accept=".csv,.txt,text/csv,text/plain" hidden>
+          </label>
+          <p class="hint">Or paste the list here:</p>
+          <textarea id="import-paste" rows="5" placeholder="123 Main St&#10;125 Main St"></textarea>
+          <div class="row">
+            <button type="button" class="btn" id="import-paste-go">Use pasted list</button>
+          </div>
+          <p class="error" id="import-file-error" hidden></p>
+        </div>
+
+        <div id="import-step-columns" hidden>
+          <h3>Which columns make up the address?</h3>
+          <label class="toggle">
+            <input type="checkbox" id="import-has-header">
+            The first row is column names, not a home
+          </label>
+          <div id="import-columns" class="column-list"></div>
+          <h3>Which column has the lot number? (optional)</h3>
+          <p class="hint">Homes without an address yet will go by their lot number.</p>
+          <div id="import-lot" class="choice-grid"></div>
+          <div class="row">
+            <button type="button" class="btn ghost" id="import-back-1">Back</button>
+            <button type="button" class="btn" id="import-columns-go">Next</button>
+          </div>
+        </div>
+
+        <div id="import-step-fix" hidden>
+          <h3>Check the addresses</h3>
+          <div class="fix-list">
+            <label class="toggle"><input type="checkbox" data-fix="spaces" checked> Remove extra spaces</label>
+            <label class="toggle"><input type="checkbox" data-fix="caps" checked> Fix capital letters (123 MAIN ST &rarr; 123 Main St)</label>
+            <label class="toggle"><input type="checkbox" data-fix="street" checked> Shorten street types (Street &rarr; St, Avenue &rarr; Ave)</label>
+            <label class="toggle"><input type="checkbox" data-fix="dupes" checked> Skip duplicate addresses</label>
+            <label class="toggle" id="import-ds-row"><input type="checkbox" id="import-ds"> <span id="import-ds-label">Distributed split</span></label>
+          </div>
+          <p class="error" id="import-ds-error" hidden></p>
+          <p id="import-summary" class="import-summary"></p>
+          <div class="preview-wrap">
+            <table id="import-preview" class="preview"></table>
+          </div>
+          <h3>How many fibers in each drop?</h3>
+          <div id="import-drop" class="choice-grid"></div>
+          <div class="row">
+            <button type="button" class="btn ghost" id="import-back-2">Back</button>
+            <button type="button" class="btn big" id="import-go"></button>
+          </div>
+        </div>
+
+        <div class="row">
+          <button type="button" class="btn ghost" id="import-cancel">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Print choices -->
+      <div id="print-panel" class="wizard" hidden>
+        <h3>How should the map print?</h3>
+        <div class="choice-grid print-modes">
+          <button type="button" class="big-btn" data-print-mode="fit">
+            One sheet
+            <small>The whole route fits on page 1. Big jobs get smaller.</small>
+          </button>
+          <button type="button" class="big-btn secondary" data-print-mode="tiles">
+            Several sheets
+            <small>A one-page overview, then the map full size across as many sheets as it needs.</small>
+          </button>
+        </div>
+        <p class="hint" id="print-mode-note"></p>
+        <div class="row">
+          <button type="button" class="btn ghost" id="print-cancel">Cancel</button>
+          <button type="button" class="btn big" id="print-go">&#128438; Print / Save PDF</button>
+        </div>
+      </div>
+
+      <!-- Splice sheet for one location -->
+      <div id="splice-panel" class="wizard wide" hidden>
+        <h3 id="splice-title"></h3>
+        <div id="splice-body"></div>
+        <div class="row">
+          <button type="button" class="btn big" id="splice-close">Close</button>
+        </div>
+      </div>
+
+      <!-- Troubleshooter results -->
+      <div id="check-panel" class="wizard wide" hidden>
+        <h3 id="check-title"></h3>
+        <ul id="check-list" class="check-list"></ul>
+        <div class="row">
+          <button type="button" class="btn big" id="check-close">Close</button>
+        </div>
+      </div>
+
+      <!-- Counts for one home: F2 from its splitter, optional DS port -->
+      <div id="counts-panel" class="wizard" hidden>
+        <h3 id="counts-title"></h3>
+        <div id="counts-f2" class="f2-info"></div>
+        <label class="toggle big-toggle">
+          <input type="checkbox" id="counts-ds-on">
+          Distributed split
+        </label>
+        <div id="counts-ds" class="ds-box" hidden>
+          <div id="counts-splitters" class="choice-grid"></div>
+          <h4 id="counts-ds-question"></h4>
+          <div id="counts-ports" class="choice-grid ports"></div>
+        </div>
+        <div class="row">
+          <button type="button" class="btn big" id="counts-done">Done</button>
+        </div>
+      </div>
+
+      <!-- Wizard: one big-button question at a time -->
+      <div id="wizard" class="wizard" hidden>
+        <h3 id="wizard-question"></h3>
+        <div id="wizard-choices" class="choice-grid"></div>
+        <form id="wizard-name-form" class="other-form" hidden>
+          <label for="wizard-name" id="wizard-name-label">Name</label>
+          <input id="wizard-name" type="text" autocomplete="off" required>
+          <div class="row">
+            <button type="submit" class="btn">Next</button>
+          </div>
+        </form>
+        <div class="row">
+          <button type="button" class="btn ghost" id="wizard-cancel">Cancel</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <input type="file" id="open-plan-file" accept=".json,application/json" hidden>
+
+  <!-- Field sheet: built when printing, 11x17 landscape -->
+  <section id="print-sheet" class="print-sheet"></section>
+
+  <script src="app.js"></script>
+  <script src="import.js"></script>
+  <script src="counts.js"></script>
+  <script src="files.js"></script>
+  <script src="splices.js"></script>
+  <script src="edits.js"></script>
+  <script src="check.js"></script>
+  <script src="print.js"></script>
+  <script>
+    // Works offline once installed. Skipped when opened straight from a file.
+    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    }
+  </script>
+</body>
+</html>

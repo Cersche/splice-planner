@@ -1,0 +1,399 @@
+// Import homes: read an address list (usually CSV), walk the user
+// through cleaning it up, then add one Customer NID and drop per home.
+// Uses plan, point, makeId, finish, DROP_COUNTS etc. from app.js.
+
+const importPanel = document.getElementById("import-panel");
+const importSteps = {
+  file: document.getElementById("import-step-file"),
+  columns: document.getElementById("import-step-columns"),
+  fix: document.getElementById("import-step-fix"),
+};
+
+// State for the import in progress.
+let imp = null;
+
+function importHomes(fromId) {
+  closeWizard();
+  closeCable();
+  imp = { fromId, rows: [], hasHeader: false, columns: [], dropFibers: 1, include: {} };
+  document.getElementById("import-title").textContent = `Import homes fed from ${point(fromId).name}`;
+  document.getElementById("import-file").value = "";
+  document.getElementById("import-paste").value = "";
+  document.getElementById("import-file-error").hidden = true;
+  importPanel.hidden = false;
+  showImportStep("file");
+  importPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function closeImport() {
+  importPanel.hidden = true;
+  imp = null;
+}
+
+function showImportStep(name) {
+  const order = ["file", "columns", "fix"];
+  for (const [key, el] of Object.entries(importSteps)) el.hidden = key !== name;
+  document.getElementById("import-step-count").textContent = `Step ${order.indexOf(name) + 1} of 3`;
+}
+
+document.getElementById("import-cancel").addEventListener("click", () => {
+  closeImport();
+  selectedId = null;
+  renderRoute();
+});
+document.getElementById("import-back-1").addEventListener("click", () => showImportStep("file"));
+document.getElementById("import-back-2").addEventListener("click", () => showImportStep("columns"));
+
+// --- Step 1: get the text ---
+
+document.getElementById("import-file").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => loadText(String(reader.result));
+  reader.onerror = () => fileError("That file could not be read. Try saving it again as CSV.");
+  reader.readAsText(file);
+});
+
+document.getElementById("import-paste-go").addEventListener("click", () => {
+  loadText(document.getElementById("import-paste").value);
+});
+
+function fileError(msg) {
+  const el = document.getElementById("import-file-error");
+  el.textContent = msg;
+  el.hidden = false;
+}
+
+function loadText(text) {
+  const rows = parseCSV(text).filter((r) => r.some((cell) => cell.trim() !== ""));
+  if (!rows.length) return fileError("No addresses found. Check that the file has one home per row.");
+  imp.rows = rows;
+  imp.hasHeader = looksLikeHeader(rows);
+  imp.columns = guessColumns(rows, imp.hasHeader);
+  imp.lotCol = columnNames(rows, imp.hasHeader).findIndex((n) => /\blot\b/i.test(n));
+  imp.columns = imp.columns.filter((c) => c !== imp.lotCol);
+  renderColumns();
+  showImportStep("columns");
+}
+
+// --- CSV reading ---
+
+// Handles quoted cells, commas inside quotes, Windows line endings and
+// lists saved with semicolons, tabs or pipes instead of commas.
+function parseCSV(text) {
+  text = text.replace(/^﻿/, "");
+  const delim = guessDelimiter(text);
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else if (ch === '"') {
+        quoted = false;
+      } else {
+        cell += ch;
+      }
+    } else if (ch === '"' && cell.trim() === "") {
+      quoted = true;
+      cell = "";
+    } else if (ch === delim) {
+      row.push(cell);
+      cell = "";
+    } else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += ch;
+    }
+  }
+  if (cell !== "" || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function guessDelimiter(text) {
+  const firstLines = text.split(/\r?\n/).slice(0, 5).join("\n");
+  let best = ",";
+  let bestCount = 0;
+  for (const d of [",", ";", "\t", "|"]) {
+    const count = firstLines.split(d).length - 1;
+    if (count > bestCount) {
+      best = d;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+// A header row has no house numbers, while the rows under it do.
+function looksLikeHeader(rows) {
+  if (rows.length < 2) return false;
+  const hasDigits = (r) => r.some((c) => /\d/.test(c));
+  const knownWords = /address|street|addr|house|number|city|zip|unit|apt|name|state/i;
+  return rows[0].some((c) => knownWords.test(c)) || (!hasDigits(rows[0]) && hasDigits(rows[1]));
+}
+
+function columnNames(rows, hasHeader) {
+  const width = Math.max(...rows.map((r) => r.length));
+  return Array.from({ length: width }, (_, i) =>
+    hasHeader && rows[0][i] && rows[0][i].trim() ? rows[0][i].trim() : `Column ${i + 1}`);
+}
+
+// Pick the address column, or house number + street when they are split.
+// City, state and zip are left out: the field sheet only needs the street.
+function guessColumns(rows, hasHeader) {
+  const names = columnNames(rows, hasHeader).map((n) => n.toLowerCase());
+  const find = (re) => names.findIndex((n) => re.test(n));
+  const address = find(/address|addr|location/);
+  if (address >= 0 && hasHeader) return [address];
+  const number = find(/house|number|^no\.?$|^num/);
+  const street = find(/street|road|^st$/);
+  const unit = find(/unit|apt|suite/);
+  if (number >= 0 && street >= 0) return [number, street, unit].filter((i) => i >= 0);
+
+  // No useful names: choose the column that most often starts with a number.
+  const data = hasHeader ? rows.slice(1) : rows;
+  let best = 0;
+  let bestScore = -1;
+  names.forEach((_, i) => {
+    const score = data.filter((r) => /^\s*\d+\s+\S/.test(r[i] || "")).length;
+    if (score > bestScore) {
+      best = i;
+      bestScore = score;
+    }
+  });
+  return [best];
+}
+
+// --- Step 2: pick columns ---
+
+const headerBox = document.getElementById("import-has-header");
+headerBox.addEventListener("change", () => {
+  imp.hasHeader = headerBox.checked;
+  renderColumns();
+});
+
+function renderColumns() {
+  headerBox.checked = imp.hasHeader;
+  const names = columnNames(imp.rows, imp.hasHeader);
+  const sample = (imp.hasHeader ? imp.rows.slice(1) : imp.rows).find((r) => r.some((c) => c.trim())) || [];
+  const list = document.getElementById("import-columns");
+  list.innerHTML = "";
+  names.forEach((name, i) => {
+    const on = imp.columns.includes(i);
+    const opt = document.createElement("label");
+    opt.className = "column-option" + (on ? " on" : "");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = on;
+    box.addEventListener("change", () => {
+      imp.columns = box.checked ? [...imp.columns, i].sort((a, b) => a - b) : imp.columns.filter((c) => c !== i);
+      renderColumns();
+    });
+    const text = document.createElement("div");
+    const n = document.createElement("div");
+    n.className = "col-name";
+    n.textContent = name;
+    const s = document.createElement("div");
+    s.className = "col-sample";
+    s.textContent = sample[i] ? `e.g. ${sample[i].trim()}` : "(empty)";
+    text.append(n, s);
+    opt.append(box, text);
+    list.append(opt);
+  });
+  const lotGrid = document.getElementById("import-lot");
+  lotGrid.innerHTML = "";
+  [{ label: "None", i: -1 }, ...names.map((label, i) => ({ label, i }))].forEach(({ label, i }) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "big-btn" + (imp.lotCol === i ? "" : " secondary");
+    b.textContent = label;
+    b.addEventListener("click", () => {
+      imp.lotCol = i;
+      imp.columns = imp.columns.filter((c) => c !== i);
+      renderColumns();
+    });
+    lotGrid.append(b);
+  });
+  document.getElementById("import-columns-go").disabled = imp.columns.length === 0 && imp.lotCol < 0;
+}
+
+document.getElementById("import-columns-go").addEventListener("click", () => {
+  imp.include = {};
+  renderPreview();
+  showImportStep("fix");
+});
+
+// --- Step 3: fix and preview ---
+
+const STREET_TYPES = {
+  street: "St", avenue: "Ave", road: "Rd", drive: "Dr", lane: "Ln", court: "Ct",
+  boulevard: "Blvd", circle: "Cir", place: "Pl", highway: "Hwy", parkway: "Pkwy",
+  terrace: "Ter", trail: "Trl", way: "Way", square: "Sq", crossing: "Xing",
+};
+const UPPER_WORDS = new Set(["N", "S", "E", "W", "NE", "NW", "SE", "SW", "PO", "US", "FM", "CR", "SR"]);
+
+function fixOn(name) {
+  return document.querySelector(`[data-fix="${name}"]`).checked;
+}
+
+document.querySelectorAll("[data-fix]").forEach((box) => box.addEventListener("change", renderPreview));
+document.getElementById("import-ds").addEventListener("change", renderPreview);
+
+function cleanAddress(raw) {
+  let a = raw;
+  if (fixOn("spaces")) a = a.replace(/\s+/g, " ").replace(/\s+,/g, ",").trim();
+  if (fixOn("caps")) {
+    a = a.toLowerCase().replace(/[a-z0-9']+/g, (w) => {
+      const up = w.toUpperCase();
+      if (UPPER_WORDS.has(up)) return up;
+      if (/^\d+(st|nd|rd|th)$/.test(w)) return w; // 1st, 22nd
+      if (/\d/.test(w)) return up; // unit numbers like 4B
+      return w[0].toUpperCase() + w.slice(1);
+    });
+  }
+  if (fixOn("street")) {
+    a = a.replace(/\b([A-Za-z]+)\b\.?/g, (m, w) => {
+      const short = STREET_TYPES[w.toLowerCase()];
+      if (short) return short;
+      // Already short, just drop the period: "Dr." -> "Dr".
+      const known = Object.values(STREET_TYPES).find((s) => s.toLowerCase() === w.toLowerCase());
+      return known || m;
+    });
+  }
+  return a;
+}
+
+// Every row with its cleaned address and any problems found.
+function previewRows() {
+  const data = imp.hasHeader ? imp.rows.slice(1) : imp.rows;
+  const existing = new Set(plan.points.filter((p) => p.type === "nid").map((p) => p.name.toLowerCase()));
+  const seen = new Set();
+  return data.map((r, i) => {
+    const raw = imp.columns.map((c) => r[c] || "").filter((x) => x.trim()).join(" ");
+    const address = cleanAddress(raw);
+    const lot = imp.lotCol >= 0 ? cleanLot(r[imp.lotCol] || "") : "";
+    // No address yet: the home goes by its lot number.
+    const name = address || (lot ? lotName(lot) : "");
+    const key = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const problems = [];
+    let skip = false;
+    if (!name) {
+      problems.push("blank");
+      skip = true;
+    } else {
+      if (seen.has(key) || existing.has(name.toLowerCase())) {
+        problems.push(existing.has(name.toLowerCase()) ? "already on the route" : "duplicate");
+        if (fixOn("dupes")) skip = true;
+      }
+      if (address && !/^\d/.test(address)) problems.push("no house number");
+      seen.add(key);
+    }
+    // The user's own tick wins over the automatic choice.
+    const include = i in imp.include ? imp.include[i] : !skip;
+    return { index: i, raw, address, lot, name, problems, include };
+  });
+}
+
+function renderPreview() {
+  const rows = previewRows();
+  const table = document.getElementById("import-preview");
+  table.innerHTML = "";
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    if (!r.include) tr.className = "skip";
+    const tdBox = document.createElement("td");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = r.include;
+    box.disabled = !r.name;
+    box.title = "Include this home";
+    box.addEventListener("change", () => {
+      imp.include[r.index] = box.checked;
+      renderPreview();
+    });
+    tdBox.append(box);
+    const tdAddr = document.createElement("td");
+    tdAddr.textContent = r.address ? (r.lot ? `${r.address} (${lotName(r.lot)})` : r.address)
+      : r.lot ? `${lotName(r.lot)} (no address yet)` : "(blank row)";
+    if (r.address && r.address !== r.raw.trim()) tdAddr.title = `Was: ${r.raw}`;
+    const tdFlag = document.createElement("td");
+    tdFlag.className = "flag";
+    tdFlag.textContent = r.problems.join(", ");
+    tr.append(tdBox, tdAddr, tdFlag);
+    table.append(tr);
+  }
+  const count = rows.filter((r) => r.include).length;
+  const flagged = rows.filter((r) => r.problems.length).length;
+  const fixed = rows.filter((r) => r.address && r.address !== r.raw.trim()).length;
+  document.getElementById("import-summary").textContent =
+    `${rows.length} rows read. ${fixed} cleaned up. ${flagged} need a look (marked in red). ` +
+    `Untick any home you don't want.`;
+  const go = document.getElementById("import-go");
+  go.textContent = `Add ${count} home${count === 1 ? "" : "s"}`;
+  imp.ready = rows.filter((r) => r.include);
+
+  // Distributed split: each home gets the next free DS port on the
+  // splitter feeding this location. Blocked if there aren't enough ports.
+  const loc = feedingLocation(imp.fromId);
+  imp.splitter = loc ? splittersAt(loc)[0] : null;
+  document.getElementById("import-ds-row").hidden = !imp.splitter;
+  const dsError = document.getElementById("import-ds-error");
+  dsError.hidden = true;
+  let blocked = false;
+  if (imp.splitter) {
+    const free = splitterPorts(imp.splitter) - usedPorts(imp.splitter).size;
+    document.getElementById("import-ds-label").textContent =
+      `Distributed split: give each home a DS port on ${imp.splitter.name} at ${loc.name} (${free} free)`;
+    if (document.getElementById("import-ds").checked && count > free) {
+      dsError.textContent = `Only ${free} DS ports are free on ${imp.splitter.name}, but ${count} homes are ticked. ` +
+        "Untick some homes or turn off distributed split.";
+      dsError.hidden = false;
+      blocked = true;
+    }
+  }
+  go.disabled = count === 0 || blocked;
+}
+
+const dropGrid = document.getElementById("import-drop");
+function renderDropChoices() {
+  dropGrid.innerHTML = "";
+  for (const n of DROP_COUNTS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "big-btn" + (imp && imp.dropFibers === n ? "" : " secondary");
+    b.textContent = n;
+    b.addEventListener("click", () => {
+      imp.dropFibers = n;
+      renderDropChoices();
+    });
+    dropGrid.append(b);
+  }
+}
+
+document.getElementById("import-columns-go").addEventListener("click", renderDropChoices);
+
+document.getElementById("import-go").addEventListener("click", () => {
+  let drop = plan.cables.filter((c) => /^Drop \d+$/.test(c.name)).length;
+  const useDS = imp.splitter && document.getElementById("import-ds").checked;
+  for (const r of imp.ready) {
+    const stop = { id: makeId(), type: "nid", label: typeLabel("nid"), name: r.name, equipment: [] };
+    if (r.lot) stop.lot = r.lot;
+    if (useDS) stop.ds = { splitterId: imp.splitter.id, port: nextFreePort(imp.splitter) };
+    plan.points.push(stop);
+    plan.cables.push({ id: makeId(), name: `Drop ${++drop}`, from: imp.fromId, to: stop.id, fibers: imp.dropFibers });
+  }
+  closeImport();
+  finish();
+});
