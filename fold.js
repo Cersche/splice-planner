@@ -5,30 +5,53 @@
 // away. The search box finds anything tucked out of sight and unfolds
 // the way to it.
 //
-// What's open is a view setting, kept on this device, not in the plan.
+// Folding is the Compact layout. Each person picks a layout from the
+// Layout menu: Full (everything open, best for small jobs), Compact
+// (folded, for big ones), Table (a row per home, grouped by location),
+// or Auto, which picks Full or Compact by the number of homes.
+//
+// The layout and what's open are view settings, kept on this device, not
+// in the plan.
 
 const VIEW_KEY = "splicePlanner.view";
+const LAYOUTS = { auto: "Auto", full: "Full", compact: "Compact", table: "Table" };
+// Auto turns Compact past this many homes.
+const AUTO_COMPACT_HOMES = 40;
 
 const fold = (() => {
   try {
     const v = JSON.parse(localStorage.getItem(VIEW_KEY)) || {};
-    return { all: !!v.all, homes: new Set(v.homes || []), spots: new Set(v.spots || []), branches: new Set(v.branches || []) };
+    return { layout: LAYOUTS[v.layout] ? v.layout : "auto", homes: new Set(v.homes || []), spots: new Set(v.spots || []), branches: new Set(v.branches || []) };
   } catch {
-    return { all: false, homes: new Set(), spots: new Set(), branches: new Set() };
+    return { layout: "auto", homes: new Set(), spots: new Set(), branches: new Set() };
   }
 })();
 
 function saveFold() {
   try {
-    localStorage.setItem(VIEW_KEY, JSON.stringify({ all: fold.all, homes: [...fold.homes], spots: [...fold.spots], branches: [...fold.branches] }));
+    localStorage.setItem(VIEW_KEY, JSON.stringify({ layout: fold.layout, homes: [...fold.homes], spots: [...fold.spots], branches: [...fold.branches] }));
   } catch {
     // Storage unavailable; folding still works for this visit.
   }
 }
 
+function homeCount() {
+  return plan ? plan.points.filter((p) => p.type === "nid" && phaseShown(p)).length : 0;
+}
+
+// The layout on screen: Auto resolved to Full or Compact.
+function layoutNow() {
+  if (fold.layout !== "auto") return fold.layout;
+  return homeCount() > AUTO_COMPACT_HOMES ? "compact" : "full";
+}
+
+function isFull() {
+  return layoutNow() === "full";
+}
+
 // Homes at the end of the line from this location are on screen.
 function homesShown(id) {
-  return fold.all || fold.homes.has(id);
+  return isFull() || fold.homes.has(id);
 }
 
 // A terminal at its own spot: fed by a terminal tail, with only homes
@@ -42,11 +65,11 @@ function isSpot(path) {
 
 // A spot drawn as a chip on its parent instead of a card of its own.
 function isTucked(path) {
-  return !fold.all && isSpot(path) && !fold.spots.has(path.to);
+  return !isFull() && isSpot(path) && !fold.spots.has(path.to);
 }
 
 function branchFolded(id) {
-  return fold.branches.has(id);
+  return !isFull() && fold.branches.has(id);
 }
 
 // Everything past a location: stops (not homes) and homes.
@@ -83,12 +106,14 @@ function unfoldTo(id) {
   saveFold();
 }
 
-// Unfold, pick it out and bring it to the middle of the screen.
+// Unfold, pick it out and bring it to the middle of the screen (or its
+// row, in the table).
 function revealPoint(id) {
   unfoldTo(id);
   closeMenu();
   selectedId = id;
   renderRoute();
+  if (layoutNow() === "table") return showTableRow(id);
   const card = tree.querySelector(`.stop[data-id="${CSS.escape(id)}"]`);
   if (card) centerOn(card);
 }
@@ -96,6 +121,8 @@ function revealPoint(id) {
 // --- Under a location's card: tucked terminals, homes, fold ---
 
 function foldTray(p, drops, tucked, hasKids) {
+  // Full is the plain route: no tray.
+  if (isFull()) return null;
   const tray = el("div", "stop-tray");
   for (const path of tucked) {
     const m = point(path.to);
@@ -108,7 +135,7 @@ function foldTray(p, drops, tucked, hasKids) {
       el("span", "n", String(homes)));
     tray.append(b);
   }
-  if (drops.length && !fold.all) {
+  if (drops.length) {
     const open = homesShown(p.id);
     const b = btnEl(open ? "Hide homes" : `${plural(drops.length, "home")} ▸`, (e) => {
       e.stopPropagation();
@@ -157,21 +184,36 @@ function openSpotPeek(id, e) {
   openPopup(sp.length === 1 ? sp[0].name : m.name, items, e, caption);
 }
 
-// --- Toolbar: fold everything, or show every home ---
+// --- Layout menu, and "Fold all" in Compact ---
 
+const layoutPick = document.getElementById("layout-pick");
 const foldAllBtn = document.getElementById("fold-all");
 
-function renderFoldButton() {
-  foldAllBtn.textContent = fold.all ? "Fold homes" : "Show all homes";
-  foldAllBtn.title = fold.all ? "Tuck homes and tail terminals back into their locations" : "Open every home and terminal (a big job gets long)";
+function renderLayoutPick() {
+  const auto = homeCount() > AUTO_COMPACT_HOMES ? "Compact" : "Full";
+  layoutPick.replaceChildren(...selectEl([
+    { value: "auto", label: `Auto (${auto} for ${plural(homeCount(), "home")})` },
+    { value: "full", label: "Full: everything open" },
+    { value: "compact", label: "Compact: homes folded" },
+    { value: "table", label: "Table: a row per home" },
+  ]).childNodes);
+  layoutPick.value = fold.layout;
+  foldAllBtn.hidden = layoutNow() !== "compact";
 }
+
+layoutPick.addEventListener("change", () => {
+  fold.layout = layoutPick.value;
+  saveFold();
+  selectedId = null;
+  renderRoute();
+  requestAnimationFrame(() => startView());
+});
 
 foldAllBtn.addEventListener("click", (e) => {
   e.stopPropagation();
-  fold.all = !fold.all;
   fold.homes.clear();
   fold.spots.clear();
-  if (!fold.all) fold.branches.clear();
+  fold.branches.clear();
   saveFold();
   renderRoute();
   fitAll();

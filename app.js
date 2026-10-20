@@ -377,14 +377,23 @@ let routeModel = null;
 
 function renderRoute() {
   routeModel = buildSpliceModel();
-  // Keep the card being worked on where it was on screen.
-  const anchor = rememberAnchor();
-  tree.innerHTML = "";
-  tree.append(branchEl(plan.points[0]));
-  restoreAnchor(anchor);
-  renderFoldButton();
-  drawFans();
-  scheduleMinimap();
+  // The Table layout (table.js) stands in for the drawing.
+  const table = layoutNow() === "table";
+  routeView.hidden = table;
+  routeTable.hidden = !table;
+  if (table) {
+    tree.innerHTML = "";
+    renderTable();
+  } else {
+    // Keep the card being worked on where it was on screen.
+    const anchor = rememberAnchor();
+    tree.innerHTML = "";
+    tree.append(branchEl(plan.points[0]));
+    restoreAnchor(anchor);
+    drawFans();
+    scheduleMinimap();
+  }
+  renderLayoutPick();
   updateUnassignedButton();
   renderHeader();
 }

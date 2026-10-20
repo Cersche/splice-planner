@@ -118,8 +118,10 @@ function centerOn(e) {
 // The canvas fills the window below the top bar.
 function sizeView() {
   if (screens.route.hidden) return;
-  const top = routeView.getBoundingClientRect().top + window.scrollY;
-  routeView.style.height = Math.max(260, window.innerHeight - top - 12) + "px";
+  const top = (routeView.hidden ? routeTable : routeView).getBoundingClientRect().top + window.scrollY;
+  const h = Math.max(260, window.innerHeight - top - 12) + "px";
+  routeView.style.height = h;
+  routeTable.style.maxHeight = h;
 }
 
 window.addEventListener("resize", () => {
