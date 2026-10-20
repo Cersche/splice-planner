@@ -203,7 +203,7 @@ dsOn.addEventListener("change", () => {
   const port = nextFreePort(splitter, home.id);
   if (port === null) {
     dsOn.checked = false;
-    return alert(`Every port on ${splitter.name} is taken. Add a bigger splitter or free a port first.`);
+    return showNote(`Every port on ${splitter.name} is taken. Add a bigger splitter or free a port first.`);
   }
   home.ds = { splitterId: splitter.id, port };
   saveCounts();
@@ -319,10 +319,9 @@ function openBatchCounts(locId) {
     }, "btn ghost"), btnEl("Clear DS on ticked", () => {
       const chosen = homes().filter((h) => ticked.has(h.id));
       if (!chosen.length) return;
-      if (!confirm(`Clear the DS count on ${chosen.length} home${chosen.length === 1 ? "" : "s"}?`)) return;
-      for (const h of chosen) delete h.ds;
-      savePlan();
-      renderRoute();
+      withUndo(`Cleared the DS count on ${chosen.length} home${chosen.length === 1 ? "" : "s"}.`, () => {
+        for (const h of chosen) delete h.ds;
+      });
       render();
     }, "btn ghost danger"));
     sSel.addEventListener("change", render);

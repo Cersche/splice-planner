@@ -850,3 +850,106 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 @media (min-width: 641px) {
   .route-header { position: sticky; top: 0; z-index: 5; background: var(--bg); padding-top: 12px; }
 }
+
+/* --- Round 3 --- */
+
+/* A home's drop: a plain line from the location feeding it, no arrow. */
+.cable.drop .line { margin-right: 0; height: 3px; background: var(--line-b); }
+.cable.drop .line::after { display: none; }
+.cable.drop.empty .line { background: repeating-linear-gradient(90deg, #4a5866 0 8px, transparent 8px 14px); }
+
+/* Undo bar along the bottom */
+.undo-bar {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 24px);
+  padding: 10px 10px 10px 16px;
+  color: var(--text);
+  background: var(--card-3);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.undo-text { font-size: 0.92rem; }
+.undo-btn {
+  font: inherit;
+  font-weight: 700;
+  padding: 6px 12px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.undo-x {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 1.2rem;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.undo-x:hover { color: var(--text); background: var(--card-2); }
+
+/* Start over asks again, in place */
+.btn.armed, .btn.ghost.armed { color: #fff; background: #b3261e; border-color: #e5534b; }
+
+.inline-warn {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: var(--warn-bg);
+  border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent);
+  border-radius: 8px;
+}
+.inline-warn a { color: var(--accent-2); }
+
+/* Project title and phase in the top bar */
+.title-btn {
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  color: var(--text);
+  background: none;
+  border: 1px dashed transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.title-btn:hover { border-color: var(--border-2); }
+.title-btn.untitled { color: var(--muted); font-weight: 500; font-style: italic; }
+.phase-pick {
+  font-size: 0.9rem;
+  padding: 7px 8px;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+}
+.inline-field select { padding: 5px 6px; border: 1px solid var(--border-2); border-radius: 8px; background: var(--bg); }
+
+/* Earlier phases: still there, but stepped back */
+.stop.past, .cable.past { opacity: 0.55; }
+.stop.past:hover { opacity: 0.85; }
+.chip.phase { background: color-mix(in srgb, var(--warn) 22%, var(--card)); color: #f1d68f; }
+.splice-table tr.existing td { color: var(--muted); font-style: italic; }
+.phase-cell { white-space: nowrap; }
+.print-sheet .chip.phase { background: #fff3cf; color: #000; }
+.print-sheet .splice-table tr.existing td { color: #555; background: #f2f2f2; }
+
+@media (max-width: 640px) {
+  .title-btn { max-width: 60vw; }
+}
+@media print { .undo-bar { display: none !important; } }

@@ -306,7 +306,7 @@ function openConnections(locId) {
   const L = point(locId);
   let picked = null; // a source or target waiting for its other end
   const opened = new Set(); // folded tubes the user opened
-  const title = isCabinet(L) ? `Connections at ${L.name}` : `Splice case at ${L.name}`;
+  const title = isCabinet(L) ? `Connections at ${L.name}` : closureAt(L) ? `Splice case at ${L.name}` : `Splices at ${L.name}`;
   openForm(title, (body, foot) => {
     const info = el("div", "cx-info");
     const tools = el("div", "cx-tools");
@@ -338,10 +338,8 @@ function openConnections(locId) {
         renderRoute();
         flash(n ? `Spliced ${n} fiber${n === 1 ? "" : "s"}.` : "Nothing left to fill.");
       }, "btn ghost"), btnEl("Reset to automatic", () => {
-        if (!confirm("Go back to the app's own choices for the cables leaving here? Patches and F2 counts stay.")) return;
-        resetConnections(locId);
+        withUndo("Back to the app's own choices for the cables leaving here. Patches and F2 counts stayed.", () => resetConnections(locId));
         render();
-        renderRoute();
       }, "btn ghost"));
       if (!closure && !isCabinet(L)) tools.append(btnEl("Add a splice case", () => openEquipment(locId), "btn ghost"));
 
@@ -386,9 +384,8 @@ function openConnections(locId) {
         if (conn) {
           const x = btnEl("×", (e) => {
             e.stopPropagation();
-            disconnect(locId, conn);
+            withUndo(`Took apart ${endpointLabel(conn.from)} → ${endpointLabel(conn.to)}.`, () => disconnect(locId, conn));
             render();
-            renderRoute();
           }, "cx-x");
           x.title = "Take this connection apart";
           x.addEventListener("pointerdown", (e) => e.stopPropagation());
@@ -472,10 +469,9 @@ function openConnections(locId) {
         const color = a.style.background;
         if (color) path.style.stroke = color;
         path.addEventListener("click", () => {
-          if (!confirm(`Take apart ${endpointLabel(c.from)} → ${endpointLabel(c.to)}?`)) return;
-          disconnect(locId, c);
+          const text = `Took apart ${endpointLabel(c.from)} → ${endpointLabel(c.to)}.`;
+          withUndo(text, () => disconnect(locId, c));
           render();
-          renderRoute();
         });
         const t = document.createElementNS("http://www.w3.org/2000/svg", "title");
         t.textContent = `${endpointLabel(c.from)} → ${endpointLabel(c.to)}`;
@@ -564,7 +560,7 @@ function openConnections(locId) {
 
 // The patches at a location as a table, for splice sheets.
 function crossConnectTable(locId) {
-  const list = crossConnectsAt(locId);
+  const list = crossConnectsAt(locId).filter(phaseShown);
   if (!list.length) return null;
   const wrap = el("div", "xc-block");
   wrap.append(el("h4", "", "Patches and cross-connects"));
@@ -577,8 +573,9 @@ function crossConnectTable(locId) {
   for (const x of list) {
     const tr = el("tr");
     if (endpointMissing(x.a) || endpointMissing(x.b)) tr.className = "problem";
+    if (phasePast(x)) tr.classList.add("existing");
     tr.append(el("td", "strong", endpointLabel(x.a)), el("td", "", "→"), el("td", "strong", endpointLabel(x.b)),
-      el("td", "", x.note || ""), el("td", "checkbox-cell", "☐"));
+      el("td", "", [phasePast(x) ? `Existing · ${phaseName(phaseIdx(x))}` : "", x.note || ""].filter(Boolean).join(" · ")), el("td", "checkbox-cell", "☐"));
     table.append(tr);
   }
   wrap.append(table);

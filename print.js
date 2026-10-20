@@ -26,6 +26,7 @@ document.getElementById("print-plan").addEventListener("click", (e) => {
   selectedId = null;
   renderRoute();
   renderPrintModes();
+  document.getElementById("print-blocked").hidden = !printBlocked();
   printPanel.hidden = false;
 });
 
@@ -52,7 +53,21 @@ function closePrint() {
 
 registerPanel(printPanel, closePrint);
 document.getElementById("print-cancel").addEventListener("click", closePrint);
+// Inside a preview frame (like the Claude app) the browser won't print.
+const SITE_URL = "https://cersche.github.io/splice-planner/";
+function printBlocked() {
+  try {
+    return window.self !== window.top && !location.href.startsWith(SITE_URL);
+  } catch {
+    return true;
+  }
+}
+
 document.getElementById("print-go").addEventListener("click", () => {
+  if (printBlocked()) {
+    document.getElementById("print-blocked").hidden = false;
+    return;
+  }
   buildSheet();
   window.print();
 });
@@ -69,7 +84,10 @@ function buildSheet() {
   const head = el("header", "sheet-head");
   const title = el("div", "sheet-title");
   const start = plan.points[0];
-  title.append(el("h1", "", "Splice Plan"), el("div", "sheet-sub", `Starts at ${start.name}`));
+  const v = viewIdx();
+  const sub = [plan.title ? "Splice plan" : "", v !== null ? `${phaseName(v)} (earlier phases marked existing)` : hasPhases() ? "All phases" : "",
+    `Starts at ${start.name}`].filter(Boolean).join(" · ");
+  title.append(el("h1", "", plan.title || "Splice Plan"), el("div", "sheet-sub", sub));
   for (const line of detailLines(start)) title.append(el("div", "sheet-detail", line));
   const fields = el("div", "sheet-fields");
   for (const f of ["Job #", "Tech", "Date"]) {
@@ -156,7 +174,7 @@ function printBranch(p, compact, model) {
   const stop = stopEl(p);
   stop.classList.remove("selected");
   branch.append(stop);
-  const paths = childPaths(p.id);
+  const paths = shownPaths(p.id);
   const homePaths = paths.filter((x) => {
     const c = pathCable(x);
     return point(x.to).type === "nid" && !childPaths(x.to).length && !(c && c.through);
@@ -178,7 +196,7 @@ function printBranch(p, compact, model) {
 }
 
 function dropsEl(paths) {
-  const wrap = el("div", "cable");
+  const wrap = el("div", "cable drop");
   const cables = paths.map(pathCable).filter(Boolean);
   const sizes = [...new Set(cables.map((c) => c.fibers))].map((n) => `${n}F`).join("/");
   wrap.append(el("div", "cable-name", `${cables.length} drops`), el("div", "cable-size", sizes || "no drops yet"), el("div", "line"));

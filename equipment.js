@@ -32,7 +32,7 @@ function equipmentChip(eq) {
 
 // --- Equipment dialog ---
 
-function openEquipment(locId) {
+function openEquipment(locId, startKind) {
   const p = point(locId);
   p.equipment = p.equipment || [];
   openForm(`Equipment at ${p.name}`, (body, foot) => {
@@ -55,6 +55,17 @@ function openEquipment(locId) {
       const text = el("div", "eq-text");
       text.append(title, sub);
       row.append(pic, text);
+      const ph = phaseSelect(eq);
+      if (ph) {
+        ph.addEventListener("change", () => {
+          eq.phase = ph.value;
+          savePlan();
+          renderRoute();
+        });
+        const phRow = el("label", "inline-field");
+        phRow.append(el("span", "", "Phase"), ph);
+        row.append(phRow);
+      }
       if (eq.type === "splitter") {
         const f2 = inputEl("number", eq.f2 || "", { min: 1, placeholder: "not set" });
         const note = el("span", "field-hint");
@@ -98,16 +109,12 @@ function openEquipment(locId) {
       if (eq.type === "closure") actions.append(btnEl("Open splice case", () => openConnections(locId), "btn ghost"));
       actions.append(btnEl("Remove", () => {
         const onIt = plan.points.filter((h) => h.ds && h.ds.splitterId === eq.id);
-        const msg = onIt.length
-          ? `Remove ${eq.name}? ${onIt.length} home(s) have DS counts on it, and those DS counts will be cleared.`
-          : `Remove ${eq.name}?`;
-        if (!confirm(msg)) return;
-        p.equipment = p.equipment.filter((x) => x.id !== eq.id);
-        for (const h of onIt) delete h.ds;
-        dropEquipmentLinks(eq.id);
-        savePlan();
+        withUndo(`Removed ${eq.name}` + (onIt.length ? ` and the DS counts of ${onIt.length} home${onIt.length === 1 ? "" : "s"}.` : "."), () => {
+          p.equipment = p.equipment.filter((x) => x.id !== eq.id);
+          for (const h of onIt) delete h.ds;
+          dropEquipmentLinks(eq.id);
+        });
         renderList();
-        renderRoute();
       }, "btn ghost danger"));
       row.append(actions);
       return row;
@@ -116,7 +123,7 @@ function openEquipment(locId) {
     // Add form: the kind, then a template (with a picture) or splitter size.
     body.append(el("h4", "form-section", "Add equipment"));
     const kinds = kindsFor(p);
-    const kind = selectEl(kinds.map((k) => ({ value: k, label: EQ_KINDS[k].label })), kinds[0]);
+    const kind = selectEl(kinds.map((k) => ({ value: k, label: EQ_KINDS[k].label })), kinds.includes(startKind) ? startKind : kinds[0]);
     const addGrid = el("div", "add-grid");
     const fields = el("div");
     const picBox = el("div", "pic-box");
@@ -288,10 +295,11 @@ function openCards(locId, eqId) {
         });
         const top = el("div", "card-top");
         top.append(fieldEl("Card name", cardName), btnEl("Remove card", () => {
-          if (!confirm(`Remove ${card.name} and its ${card.ports.length} ports?`)) return;
           const ids = new Set(card.ports.map((x) => x.id));
-          dropPortPatches(eq.id, ids);
-          eq.cards.splice(ci, 1);
+          withUndo(`Removed ${card.name} and its ${card.ports.length} port${card.ports.length === 1 ? "" : "s"}.`, () => {
+            dropPortPatches(eq.id, ids);
+            eq.cards.splice(eq.cards.indexOf(card), 1);
+          });
           changed();
           renderCards();
         }, "btn ghost danger"));

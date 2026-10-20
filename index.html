@@ -97,7 +97,8 @@
     <section id="screen-route" class="screen" hidden>
       <header class="route-header">
         <button class="btn ghost" id="back-to-splash">&larr; Start over</button>
-        <h2>Route</h2>
+        <button type="button" class="title-btn" id="project-title" title="Project title and phases"></button>
+        <select id="phase-pick" class="phase-pick" aria-label="Phase"></select>
         <div class="header-actions">
           <button class="btn ghost" id="import-homes"><svg class="ic"><use href="#i-homes"/></svg> Import homes</button>
           <button class="btn ghost" id="unassigned-homes" hidden></button>
@@ -192,6 +193,10 @@
           </select>
         </label>
         <p class="hint" id="print-mode-note"></p>
+        <div class="inline-warn" id="print-blocked" hidden>
+          Printing doesn't work inside this preview. Save your plan, then open it on the website to print:
+          <a href="https://cersche.github.io/splice-planner/" target="_blank" rel="noopener">cersche.github.io/splice-planner</a>
+        </div>
         <div class="row">
           <button type="button" class="btn ghost" id="print-cancel">Cancel</button>
           <button type="button" class="btn big" id="print-go"><svg class="ic"><use href="#i-sheet"/></svg> Print / Save PDF</button>
@@ -250,6 +255,7 @@
   <script src="ui.js"></script>
   <script src="catalog.js"></script>
   <script src="app.js"></script>
+  <script src="phases.js"></script>
   <script src="paths.js"></script>
   <script src="equipment.js"></script>
   <script src="import.js"></script>

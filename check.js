@@ -23,6 +23,18 @@ function checkPlan() {
       warn(p.id, `${p.name} is a dead end: ${arriving.name} goes nowhere from here.`);
     }
 
+    // Phases: something can't be built before what feeds it.
+    if (hasPhases() && p.id !== start.id) {
+      const path = incomingPath(p.id);
+      const from = path && point(path.from);
+      const c = path && pathCable(path);
+      if (from && phaseIdx(p) < phaseIdx(from)) {
+        warn(p.id, `${p.name} is in ${phaseName(phaseIdx(p))}, but ${from.name} feeding it is in ${phaseName(phaseIdx(from))}.`);
+      } else if (c && phaseIdx(p) < phaseIdx(c)) {
+        warn(p.id, `${p.name} is in ${phaseName(phaseIdx(p))}, but ${c.name} feeding it is in ${phaseName(phaseIdx(c))}.`);
+      }
+    }
+
     // Cables leave, but none arrives to feed them.
     if (p.id !== start.id && !arriving && out.length) {
       problem(p.id, `${out.map((c) => c.name).join(", ")} leave${out.length === 1 ? "s" : ""} ${p.name}, but no cable reaches ${p.name}.`);

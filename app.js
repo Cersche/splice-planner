@@ -46,6 +46,7 @@ function loadPlan() {
 }
 
 function savePlan() {
+  if (plan && typeof tagPhases === "function") tagPhases();
   try {
     if (plan) localStorage.setItem(STORAGE_KEY, JSON.stringify(plan));
     else localStorage.removeItem(STORAGE_KEY);
@@ -217,7 +218,9 @@ const STOP_TYPES = {
 };
 
 // Locations offered by the + button, in menu order.
-const ADD_TYPES = ["handhole", "pedestal", "vault", "manhole", "splice", "fdh", "headend"];
+// "Splice" isn't offered: splicing happens at a handhole, pedestal and so
+// on. Old plans with splice locations still show them.
+const ADD_TYPES = ["handhole", "pedestal", "vault", "manhole", "fdh", "headend"];
 
 // Standard loose-tube cable counts, and smaller counts for drops to a NID.
 const FIBER_COUNTS = [12, 24, 48, 72, 96, 144, 216, 288, 432];
@@ -235,8 +238,19 @@ const menu = document.getElementById("context-menu");
 // The location the menu or a dialog is working on.
 let selectedId = null;
 
-document.getElementById("back-to-splash").addEventListener("click", () => {
-  if (!confirm("Start over? This clears the current plan.")) return;
+// Start over clears the plan, so it takes a second tap: the button turns
+// red and asks again for a few seconds.
+const backBtn = document.getElementById("back-to-splash");
+const backLabel = backBtn.innerHTML;
+let backArmed = null;
+backBtn.addEventListener("click", () => {
+  if (!backArmed) {
+    backBtn.classList.add("armed");
+    backBtn.textContent = "Tap again to clear the plan";
+    backArmed = setTimeout(disarmBack, 4000);
+    return;
+  }
+  disarmBack();
   plan = null;
   savePlan();
   closeMenu();
@@ -245,6 +259,13 @@ document.getElementById("back-to-splash").addEventListener("click", () => {
   otherName.value = "";
   show("splash");
 });
+
+function disarmBack() {
+  clearTimeout(backArmed);
+  backArmed = null;
+  backBtn.classList.remove("armed");
+  backBtn.innerHTML = backLabel;
+}
 
 function point(id) {
   return plan.points.find((p) => p.id === id);
@@ -331,6 +352,7 @@ function renderRoute() {
   tree.innerHTML = "";
   tree.append(branchEl(plan.points[0]));
   updateUnassignedButton();
+  renderHeader();
 }
 
 function branchEl(p) {
@@ -339,7 +361,7 @@ function branchEl(p) {
   wrap.append(stopEl(p));
   if (p.type !== "nid") wrap.append(plusEl(p));
   branch.append(wrap);
-  const paths = childPaths(p.id);
+  const paths = shownPaths(p.id);
   if (paths.length) {
     const kids = el("div", "children");
     for (const path of paths) {
@@ -358,7 +380,7 @@ function stopEl(p) {
   const isStart = p.id === plan.points[0].id;
   const meta = locMeta(p);
   const card = el("button", "stop" + (isStart ? " start" : "") + (p.type === "nid" ? " nid" : "") +
-    (p.id === selectedId ? " selected" : ""));
+    (p.id === selectedId ? " selected" : "") + (phasePast(p) ? " past" : ""));
   card.type = "button";
   card.style.setProperty("--c", meta.color);
   const badge = el("span", "badge");
@@ -378,6 +400,8 @@ function stopEl(p) {
   for (const c of childCables(p.id).filter((x) => x.through)) {
     chips.append(el("span", "chip through", `${c.name} ${THROUGH_LABELS[c.through]}`));
   }
+  const pc = phaseChip(p);
+  if (pc) chips.prepend(pc);
   if (chips.childNodes.length) card.append(chips);
   card.addEventListener("click", (e) => openMenu(p.id, e));
   card.addEventListener("contextmenu", (e) => {
@@ -452,13 +476,20 @@ function openMenu(id, e) {
     items.push({ icon: "sheet", label: "Splice sheet", run: () => openSpliceSheet(id) });
     items.push({ icon: "edit", label: "Rename", run: () => renameStop(id) });
   } else {
-    items.push({ icon: "closure", label: "Open splice case", run: () => openConnections(id) });
+    // Locations start empty: a splice case is only there once it's added.
+    if (closureAt(p)) items.push({ icon: "closure", label: "Open splice case", run: () => openConnections(id) });
+    else {
+      items.push({ icon: "closure", label: "Add a splice case", run: () => openEquipment(id, "closure") });
+      items.push({ icon: "xconnect", label: "Splices and connections", run: () => openConnections(id) });
+    }
     items.push({ icon: "splitter", label: "Equipment (case, splitters, terminals)", run: () => openEquipment(id) });
     if (homesHere()) items.push({ icon: "homes", label: "Home counts (F2 / DS)", run: () => openBatchCounts(id) });
     items.push({ icon: "info", label: "Details", run: () => openDetails(id) });
     items.push({ icon: "sheet", label: "Splice sheet", run: () => openSpliceSheet(id) });
     items.push({ icon: "edit", label: "Rename", run: () => renameStop(id) });
+    items.push({ icon: LOC_META[p.type] ? LOC_META[p.type].icon : "pin", label: "Change location type", run: () => changeTypeForm(id) });
   }
+  if (hasPhases()) items.push({ icon: "info", label: `Phase (${phaseName(phaseIdx(p))})`, run: () => openPhaseForm(id) });
   if (!isStart) {
     items.push({ icon: "move", label: "Move (feed from somewhere else)", run: () => openMove(id) });
     items.push({ icon: "remove", label: "Remove", danger: true, run: () => removeStop(id) });
@@ -606,6 +637,22 @@ function renameStop(id) {
   });
 }
 
+// A field location can be switched to another kind, e.g. an old "Splice"
+// location to the handhole it really is.
+function changeTypeForm(id) {
+  const p = point(id);
+  openForm(`Change ${p.name}`, (body, foot) => {
+    const types = ["handhole", "pedestal", "vault", "manhole", "other"];
+    const kind = selectEl(types.map((t) => ({ value: t, label: typeLabel(t) })), types.includes(p.type) ? p.type : "handhole");
+    body.append(fieldEl("Location type", kind));
+    formButtons(foot, () => {
+      p.type = kind.value;
+      p.label = typeLabel(kind.value);
+      finish();
+    });
+  });
+}
+
 function removeStop(id) {
   const p = point(id);
   // Everything fed from this location goes with it.
@@ -615,17 +662,14 @@ function removeStop(id) {
     childPaths(pid).forEach((x) => collect(x.to));
   })(id);
   const extra = doomed.size - 1;
-  const msg = extra ? `Remove ${p.name} and the ${extra} location(s) fed from it?` : `Remove ${p.name}?`;
-  if (!confirm(msg)) {
-    selectedId = null;
-    renderRoute();
-    return;
-  }
-  plan.points = plan.points.filter((x) => !doomed.has(x.id));
-  plan.paths = plan.paths.filter((x) => !doomed.has(x.to));
-  plan.cables = plan.cables.filter((c) => !doomed.has(c.to));
-  plan.xconnects = plan.xconnects.filter((x) => !doomed.has(x.at));
-  finish();
+  closeMenu();
+  selectedId = null;
+  withUndo(extra ? `Removed ${p.name} and the ${extra} location${extra === 1 ? "" : "s"} fed from it.` : `Removed ${p.name}.`, () => {
+    plan.points = plan.points.filter((x) => !doomed.has(x.id));
+    plan.paths = plan.paths.filter((x) => !doomed.has(x.to));
+    plan.cables = plan.cables.filter((c) => !doomed.has(c.to));
+    plan.xconnects = plan.xconnects.filter((x) => !doomed.has(x.at));
+  });
 }
 
 // Resume an in-progress plan, otherwise show the splash. Waits for the
