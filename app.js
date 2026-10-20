@@ -333,6 +333,15 @@ function cableKind(c) {
   return cableStart(c).kind || "cable";
 }
 
+// Line colors on the route: cables red, splitter tails blue, terminal
+// tails green. A path with no cable yet is dashed grey.
+const WIRE_COLORS = { cable: "#e5484d", "splitter-tail": "#3e8ef7", "terminal-tail": "#35b27c" };
+const NO_WIRE = "#4a5866";
+
+function wireColor(c) {
+  return c ? WIRE_COLORS[cableKind(c)] || WIRE_COLORS.cable : NO_WIRE;
+}
+
 // Drops to homes are listed with the homes, not with the cables.
 function isDrop(c) {
   const to = point(c.to);
@@ -427,6 +436,7 @@ function fanEl(paths) {
     const c = pathCable(path);
     const row = el("div", "fan-row" + (c ? "" : " empty") + (c && phasePast(c) ? " past" : "") +
       (path.to === openPathId ? " selected" : ""));
+    if (c) row.dataset.wire = wireColor(c);
     const label = el("button", "fan-drop");
     label.type = "button";
     label.title = `Drop to ${point(path.to).name}`;
@@ -440,6 +450,10 @@ function fanEl(paths) {
     rows.append(row);
   }
   fan.append(svg, rows);
+  // The line coming in from the location takes the first drop's color.
+  const first = paths.map(pathCable).find(Boolean);
+  fan.dataset.wire = wireColor(first);
+  if (!first) fan.dataset.empty = "1";
   return fan;
 }
 
@@ -465,11 +479,72 @@ function drawFans() {
       // The name goes on the side of the line away from the curve.
       row.classList.toggle("below", y > y0 + 4);
       const line = document.createElementNS(SVG_NS, "path");
-      line.setAttribute("d", `M0,${y0} C${mid},${y0} ${mid},${y} ${FAN_W},${y}`);
+      line.setAttribute("d", `M${WIRE_IN},${y0} C${mid},${y0} ${mid},${y} ${FAN_W},${y}`);
       line.setAttribute("class", "fan-line" + [...row.classList].filter((x) => x !== "fan-row").map((x) => " " + x).join(""));
+      if (row.dataset.wire && !row.classList.contains("selected")) line.style.stroke = row.dataset.wire;
       svg.append(line);
     }
   }
+  drawWires(tree, z);
+}
+
+// The lines joining a location to the paths leaving it, drawn as one
+// piece each: out of the card, along the trunk, and into the cable's line
+// with square, joined corners. Sizes are measured once the cards are laid
+// out; z is the zoom the route is shown at.
+const WIRE_IN = 23; // where the trunk runs: the start of the cable lines
+
+function drawWires(root, z = 1) {
+  const old = root.querySelector(":scope > svg.wires");
+  if (old) old.remove();
+  const base = root.getBoundingClientRect();
+  if (!base.width) return;
+  const X = (v) => Math.round(((v - base.left) / z) * 10) / 10;
+  const Y = (v) => Math.round(((v - base.top) / z) * 10) / 10;
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "wires");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("width", root.scrollWidth);
+  svg.setAttribute("height", root.scrollHeight);
+  for (const kids of root.querySelectorAll(".children")) {
+    const stop = kids.parentElement.querySelector(":scope > .stop-wrap > .stop, :scope > .stop");
+    if (!stop) continue;
+    const s = stop.getBoundingClientRect();
+    const x0 = X(s.right) - 1;
+    const y0 = Y(s.top + s.height / 2);
+    const xm = X(kids.getBoundingClientRect().left) + WIRE_IN;
+    const wires = [];
+    for (const child of kids.children) {
+      const cable = child.querySelector(":scope > .cable");
+      const fan = child.querySelector(":scope > .fan");
+      let x1, y1, color, cls = "wire";
+      if (cable) {
+        const r = cable.querySelector(".line").getBoundingClientRect();
+        x1 = X(r.right);
+        y1 = Y(r.top + r.height / 2);
+        color = cable.style.getPropertyValue("--wire") || WIRE_COLORS.cable;
+        for (const c of ["empty", "drop", "past"]) if (cable.classList.contains(c)) cls += " " + c;
+      } else if (fan) {
+        const r = fan.getBoundingClientRect();
+        x1 = xm;
+        y1 = Y(r.top + r.height / 2);
+        color = fan.dataset.wire;
+        if (fan.dataset.empty) cls += " empty";
+      } else continue;
+      wires.push({ x1, y1, color, cls });
+    }
+    // Farthest first, so the nearest path's color is on top where they share the trunk.
+    wires.sort((a, b) => Math.abs(b.y1 - y0) - Math.abs(a.y1 - y0));
+    for (const w of wires) {
+      const line = document.createElementNS(SVG_NS, "path");
+      const d = Math.abs(w.y1 - y0) < 1 ? `M${x0},${y0} H${w.x1}` : `M${x0},${y0} H${xm} V${w.y1} H${w.x1}`;
+      line.setAttribute("d", d);
+      line.setAttribute("class", w.cls);
+      line.style.stroke = w.color;
+      svg.append(line);
+    }
+  }
+  root.prepend(svg);
 }
 
 window.addEventListener("resize", () => drawFans());

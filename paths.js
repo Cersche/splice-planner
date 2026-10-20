@@ -140,6 +140,7 @@ function pathEl(path, model) {
     (path.conduit && path.conduit.size ? " conduit" : "") + (path.to === openPathId ? " selected" : "") +
     (point(path.to).type === "nid" ? " drop" : "") + (c && phasePast(c) ? " past" : ""));
   b.type = "button";
+  b.style.setProperty("--wire", wireColor(c));
   if (c) {
     const kind = cableKind(c);
     b.append(el("div", "cable-name", c.name || "Cable"),

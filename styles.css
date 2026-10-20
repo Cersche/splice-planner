@@ -1289,3 +1289,24 @@ body:not(.guest) .guest-only { display: none !important; }
   .header-actions .btn, .route-header > .btn { font-size: 0.85rem; padding: 7px 10px; }
   .header-actions .btn svg.ic { display: none; }
 }
+
+/* --- Round 5 --- */
+
+/* Route lines: cables red, splitter tails blue, terminal tails green.
+   The lines are drawn in one piece behind the cards (drawWires), so
+   corners join; the cable's own strip only keeps the arrowhead. */
+.route-tree { isolation: isolate; }
+.sheet-diagram .route-tree, .tile-measure .route-tree { position: relative; }
+.wires { position: absolute; left: 0; top: 0; z-index: -1; overflow: visible; pointer-events: none; }
+.wire { fill: none; stroke-width: 4; stroke-linejoin: round; stroke-linecap: butt; }
+.wire.drop { stroke-width: 3; }
+.wire.empty { stroke-dasharray: 8 6; }
+.wire.past { opacity: 0.45; }
+.child::before, .child:only-child::before { display: none; }
+.cable .line, .cable.through .line, .cable.drop .line, .cable.empty .line,
+.print-sheet .cable.empty .line, .cable.drop.empty .line { background: none; }
+.cable .line::after, .cable.through .line::after { border-left-color: var(--wire, #e5484d); }
+.cable.empty .line::after { border-left-color: #4a5866; }
+.fan-line { stroke: #e5484d; }
+.fan-line.empty { stroke: #4a5866; }
+.fan-line.selected { stroke: var(--accent-2); }
