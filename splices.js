@@ -19,27 +19,51 @@ function homeItem(h) {
 function buildSpliceModel() {
   const needsCache = new Map();
   const assignCache = new Map();
+  const exitsCache = new Map();
+
+  // Splitter outputs come from the splitter, not the cable feeding it.
+  const madeHere = (here, it) => here.some((s) => it.startsWith(`port:${s.id}:`));
+
+  // A child cable's fibers that carry something, with picks applied:
+  // [{ out, item, in }] where `in` is the picked incoming fiber, if any.
+  function childFibers(d) {
+    const amap = assign(d).map;
+    const rows = new Map();
+    for (const [n, it] of amap) rows.set(n, { out: n, item: it, in: null });
+    for (const p of expandPicks(d.picks)) {
+      const row = rows.get(p.out) || { out: p.out, item: `dark:${d.id}:${p.out}`, in: null };
+      row.in = p.in;
+      rows.set(p.out, row);
+    }
+    return [...rows.values()].sort((a, b) => a.out - b.out);
+  }
 
   // What one physical cable must carry: { fixed: Map(fiber -> item), items: [] }.
+  // Picked fibers and F2 counts are fixed; the rest go wherever is free.
   function needs(start) {
     if (needsCache.has(start.id)) return needsCache.get(start.id);
     const fixed = new Map();
     const items = [];
+    const fix = (n, it) => {
+      if (n <= start.fibers && !fixed.has(n)) fixed.set(n, it);
+      else items.push(it);
+    };
     for (const span of cableSpans(start)) {
       const m = point(span.to);
       if (m.type === "nid") items.push(homeItem(m));
       const here = splittersAt(m);
       for (const s of here) {
-        if (s.f2 && s.f2 <= start.fibers && !fixed.has(s.f2)) fixed.set(s.f2, `split-in:${s.id}`);
+        if (s.f2) fix(s.f2, `split-in:${s.id}`);
         else items.push(`split-in:${s.id}`);
       }
       for (const d of childCables(m.id).filter((c) => !c.through)) {
-        const sub = needs(d);
-        for (const it of [...sub.fixed.values(), ...sub.items]) {
-          // Splitter outputs come from the splitter, not this cable.
-          if (here.some((s) => it.startsWith(`port:${s.id}:`))) continue;
-          items.push(it);
+        if (d.picks) {
+          // Fibers the user picked; anything else on d isn't spliced.
+          for (const f of childFibers(d)) if (f.in && !madeHere(here, f.item)) fix(f.in, f.item);
+          continue;
         }
+        const sub = needs(d);
+        for (const it of [...sub.fixed.values(), ...sub.items]) if (!madeHere(here, it)) items.push(it);
       }
     }
     const result = { fixed, items };
@@ -53,15 +77,41 @@ function buildSpliceModel() {
     const { fixed, items } = needs(start);
     const map = new Map(fixed);
     const overflow = [];
-    let pos = 1;
-    for (const it of items) {
-      while (map.has(pos)) pos++;
-      if (pos > start.fibers) overflow.push(it);
-      else map.set(pos, it);
-    }
+    // With picks, only the picked fibers connect back to the incoming
+    // cable: fibers from upstream go on those, and splitter outputs made
+    // where this cable starts go on the others.
+    const picked = new Set(expandPicks(start.picks).map((p) => p.out));
+    const here = start.picks ? splittersAt(point(start.from)) : [];
+    const place = (it, onPicked) => {
+      for (const pass of [true, false]) {
+        for (let n = 1; n <= start.fibers; n++) {
+          if (!map.has(n) && (!pass || picked.has(n) === onPicked)) return map.set(n, it);
+        }
+      }
+      overflow.push(it);
+    };
+    for (const it of items) place(it, !madeHere(here, it));
     const result = { map, overflow };
     assignCache.set(start.id, result);
     return result;
+  }
+
+  // Where each item leaves a physical cable: item -> location name.
+  function exits(start) {
+    if (exitsCache.has(start.id)) return exitsCache.get(start.id);
+    const out = new Map();
+    for (const span of cableSpans(start)) {
+      const m = point(span.to);
+      if (m.type === "nid") out.set(homeItem(m), m.name);
+      for (const s of splittersAt(m)) out.set(`split-in:${s.id}`, m.name);
+      for (const d of childCables(m.id).filter((c) => !c.through)) {
+        const its = d.picks ? childFibers(d).filter((f) => f.in).map((f) => f.item)
+          : [...needs(d).fixed.values(), ...needs(d).items];
+        for (const it of its) if (!out.has(it)) out.set(it, m.name);
+      }
+    }
+    exitsCache.set(start.id, out);
+    return out;
   }
 
   function fiberLabel(cable, n) {
@@ -77,11 +127,15 @@ function buildSpliceModel() {
 
   // Who or what an item is for, in words.
   function describe(item) {
-    const [kind, id] = item.split(":");
+    const [kind, id, n] = item.split(":");
     if (kind === "home") return point(id) ? point(id).name : "home";
     if (kind === "split-in") {
       const hit = splitterById(id);
       return hit ? `Feeds ${hit.s.name} at ${hit.p.name}` : "splitter";
+    }
+    if (kind === "dark") {
+      const d = plan.cables.find((c) => c.id === id);
+      return d ? `Spare, spliced to ${d.name} #${n}` : "Spare";
     }
     const home = plan.points.find((h) => h.type === "nid" && homeItem(h) === item);
     return home ? home.name : "spare port";
@@ -95,10 +149,25 @@ function buildSpliceModel() {
       if (s) return { text: `${s.name} output ${port.startsWith("auto") ? "(no DS set)" : port}`, colors: "" };
     }
     const c = incomingCable(L.id);
-    if (!c) return { text: `${L.name} (start)`, colors: "" };
+    if (!c) {
+      if (L.id === plan.points[0].id) return { text: `${L.name} (start)`, colors: "" };
+      return { text: `No cable reaches ${L.name}`, colors: "", missing: true };
+    }
     const start = cableStart(c);
     for (const [n, it] of assign(start).map) if (it === item) return fiberLabel(start, n);
     return { text: "Not on the incoming cable", colors: "", missing: true };
+  }
+
+  // Incoming -> outgoing fiber pairs the app chose for an automatic cable.
+  function autoPairs(d) {
+    const L = point(d.from);
+    const c = incomingCable(L.id);
+    if (!c) return [];
+    const inMap = assign(cableStart(c)).map;
+    const byItem = new Map([...inMap].map(([n, it]) => [it, n]));
+    const pairs = [];
+    for (const [n, it] of assign(d).map) if (byItem.has(it)) pairs.push({ in: byItem.get(it), out: n });
+    return pairs;
   }
 
   // Splice rows at one location.
@@ -106,15 +175,25 @@ function buildSpliceModel() {
     const L = point(locId);
     const rows = [];
     const c = incomingCable(locId);
-    for (const s of splittersAt(L)) {
+    const here = splittersAt(L);
+    for (const s of here) {
       const from = s.f2 && c && s.f2 <= c.fibers ? fiberLabel(cableStart(c), s.f2) : source(L, `split-in:${s.id}`);
       rows.push({ from, to: { text: `${s.name} input`, colors: "" }, note: s.f2 ? `F2 ${s.f2}` : "F2 not set" });
     }
     for (const d of childCables(locId).filter((x) => !x.through)) {
-      const { map } = assign(d);
-      for (const n of [...map.keys()].sort((a, b) => a - b)) {
-        const item = map.get(n);
-        rows.push({ from: source(L, item), to: fiberLabel(d, n), note: describe(item) });
+      for (const f of childFibers(d)) {
+        let from;
+        if (madeHere(here, f.item)) from = source(L, f.item);
+        else if (d.picks) {
+          from = f.in && c ? fiberLabel(cableStart(c), f.in)
+            : { text: f.in ? `No cable reaches ${L.name}` : "Not spliced (not in the fibers picked)", colors: "", missing: true };
+        } else from = source(L, f.item);
+        // At the start, show what a fiber is patched to, if anything.
+        if (!c && !from.missing) {
+          const x = crossConnectFor(`fiber:${d.id}:${f.out}`);
+          if (x) from = { text: `Patched: ${endpointLabel(x.other)}`, colors: "" };
+        }
+        rows.push({ from, to: fiberLabel(d, f.out), note: describe(f.item) });
       }
     }
     const through = childCables(locId).filter((x) => x.through)
@@ -122,7 +201,7 @@ function buildSpliceModel() {
     return { rows, through };
   }
 
-  return { needs, assign, rowsAt, describe };
+  return { needs, assign, exits, rowsAt, describe, autoPairs, childFibers };
 }
 
 // Locations that get a splice sheet: anything but a home with work on it.
@@ -130,7 +209,7 @@ function spliceLocations(model) {
   return plan.points.filter((p) => {
     if (p.type === "nid") return false;
     const { rows, through } = model.rowsAt(p.id);
-    return rows.length || through.length;
+    return rows.length || through.length || crossConnectsAt(p.id).length;
   });
 }
 
@@ -138,13 +217,17 @@ function spliceLocations(model) {
 function spliceTable(model, locId) {
   const { rows, through } = model.rowsAt(locId);
   const wrap = document.createElement("div");
+  const xc = crossConnectTable(locId);
   for (const t of through) {
     const p = document.createElement("p");
     p.className = "through-note";
     p.textContent = t;
     wrap.append(p);
   }
-  if (!rows.length) return wrap;
+  if (!rows.length) {
+    if (xc) wrap.append(xc);
+    return wrap;
+  }
   const table = document.createElement("table");
   table.className = "sheet-table splice-table";
   const thead = document.createElement("thead");
@@ -171,6 +254,7 @@ function spliceTable(model, locId) {
     table.append(tr);
   }
   wrap.append(table);
+  if (xc) wrap.append(xc);
   return wrap;
 }
 
@@ -179,10 +263,8 @@ function spliceTable(model, locId) {
 const splicePanel = document.getElementById("splice-panel");
 
 function openSpliceSheet(locId) {
-  closeWizard();
-  closeCable();
-  closeImport();
-  closeCounts();
+  closePanels();
+  selectedId = locId;
   const model = buildSpliceModel();
   document.getElementById("splice-title").textContent = `Splice sheet: ${point(locId).name}`;
   const body = document.getElementById("splice-body");
@@ -191,12 +273,14 @@ function openSpliceSheet(locId) {
   if (!t.childNodes.length) body.textContent = "Nothing is spliced here yet.";
   else body.append(t);
   splicePanel.hidden = false;
-  splicePanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  renderRoute();
 }
 
 function closeSplice() {
   splicePanel.hidden = true;
 }
+
+registerPanel(splicePanel, closeSplice);
 
 document.getElementById("splice-close").addEventListener("click", () => {
   closeSplice();

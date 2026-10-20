@@ -8,15 +8,51 @@ function checkPlan() {
   const model = buildSpliceModel();
   const start = plan.points[0];
 
-  if (!plan.cables.length) warn(start.id, `Nothing leaves ${start.name} yet.`);
+  if (!plan.paths.length) warn(start.id, `Nothing leaves ${start.name} yet.`);
+  if (plan.unassigned.length) {
+    warn(start.id, `${plan.unassigned.length} imported home(s) are still on the unassigned list.`);
+  }
 
   for (const p of plan.points) {
     const out = childCables(p.id);
     const arriving = incomingCable(p.id);
 
     // Dead ends: a cable runs to a location and stops with nothing there.
-    if (p.type !== "nid" && p.id !== start.id && !out.length && !splittersAt(p).length) {
-      warn(p.id, `${p.name} is a dead end: ${arriving ? arriving.name : "the cable"} goes nowhere from here.`);
+    if (p.type !== "nid" && p.id !== start.id && arriving && !childPaths(p.id).length && !splittersAt(p).length &&
+      !(p.equipment || []).length) {
+      warn(p.id, `${p.name} is a dead end: ${arriving.name} goes nowhere from here.`);
+    }
+
+    // Cables leave, but none arrives to feed them.
+    if (p.id !== start.id && !arriving && out.length) {
+      problem(p.id, `${out.map((c) => c.name).join(", ")} leave${out.length === 1 ? "s" : ""} ${p.name}, but no cable reaches ${p.name}.`);
+    }
+
+    // Fibers picked by hand for cables leaving here.
+    for (const d of out.filter((x) => !x.through && x.picks)) {
+      const inCable = arriving && cableStart(arriving);
+      for (const r of d.picks) {
+        if (!inCable) break;
+        if (r.inTo > inCable.fibers) problem(p.id, `${d.name} is spliced to ${inCable.name} #${r.inTo}, but ${inCable.name} only has ${inCable.fibers} fibers.`);
+        if (r.outFrom + r.inTo - r.inFrom > d.fibers) problem(p.id, `Fibers picked for ${d.name} run past its ${d.fibers} fibers.`);
+      }
+      for (const f of model.childFibers(d)) {
+        const local = splittersAt(p).find((s) => f.item.startsWith(`port:${s.id}:`));
+        if (!f.in && !local) {
+          problem(p.id, `${d.name} #${f.out} (${model.describe(f.item)}) isn't spliced to anything at ${p.name}. Add it to the fibers picked.`);
+        }
+        if (f.in && local) {
+          problem(p.id, `${d.name} #${f.out} is picked from ${inCable ? inCable.name : "the incoming cable"} #${f.in}, ` +
+            `but it's also needed for ${local.name}'s output to ${model.describe(f.item)}. Leave a fiber on ${d.name} unpicked for it.`);
+        }
+      }
+    }
+
+    // Cross-connects to ports or fibers that are gone.
+    for (const x of crossConnectsAt(p.id)) {
+      if (endpointMissing(x.a) || endpointMissing(x.b)) {
+        problem(p.id, `A cross-connect at ${p.name} (${endpointLabel(x.a)} to ${endpointLabel(x.b)}) points at something that was removed.`);
+      }
     }
 
     for (const s of splittersAt(p)) {
@@ -41,6 +77,7 @@ function checkPlan() {
     }
 
     if (p.type === "nid") {
+      if (!arriving) warn(p.id, `${p.name} has no drop cable yet.`);
       const s = homeSplitter(p);
       if (!s) warn(p.id, `${p.name} has no splitter feeding it, so it has no F2 count.`);
       else if (!s.f2) problem(p.id, `${p.name} has no F2 count because ${s.name} has none.`);
@@ -63,6 +100,22 @@ function checkPlan() {
     seen.set(key, h);
   }
 
+  // A fiber picked for two cables. (A pick against an F2 count is
+  // reported with the splitter.)
+  for (const start of plan.cables.filter((x) => !x.through)) {
+    const owner = new Map();
+    for (const span of cableSpans(start)) {
+      for (const d of childCables(span.to).filter((x) => !x.through && x.picks)) {
+        for (const pr of expandPicks(d.picks)) {
+          if (owner.has(pr.in) && owner.get(pr.in) !== d.name) {
+            problem(span.to, `${start.name} #${pr.in} is spliced to both ${owner.get(pr.in)} and ${d.name}.`);
+          }
+          owner.set(pr.in, d.name);
+        }
+      }
+    }
+  }
+
   // Cables asked to carry more fibers than they have.
   for (const c of plan.cables.filter((x) => !x.through)) {
     const { overflow } = model.assign(c);
@@ -83,13 +136,11 @@ function closeCheck() {
   checkPanel.hidden = true;
 }
 
+registerPanel(checkPanel, closeCheck);
+
 function openCheck() {
   closeMenu();
-  closeWizard();
-  closeCable();
-  closeImport();
-  closeCounts();
-  closeSplice();
+  closePanels();
   const found = checkPlan();
   const problems = found.filter((f) => f.level === "problem").length;
   const warnings = found.length - problems;
@@ -106,6 +157,7 @@ function openCheck() {
     b.textContent = `${f.level === "problem" ? "Problem" : "Warning"}: ${f.text}`;
     b.title = "Show it on the route";
     b.addEventListener("click", () => {
+      closeCheck();
       selectedId = f.where;
       renderRoute();
       const el = document.querySelector(".stop.selected");
@@ -115,7 +167,6 @@ function openCheck() {
     list.append(li);
   }
   checkPanel.hidden = false;
-  checkPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 document.getElementById("check-plan").addEventListener("click", (e) => {
@@ -143,4 +194,4 @@ renderRoute = function () {
   renderRouteOnly();
   updateCheckBadge();
 };
-if (plan && !screens.route.hidden) updateCheckBadge();
+

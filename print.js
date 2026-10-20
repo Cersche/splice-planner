@@ -19,24 +19,20 @@ function printMode() {
   return plan.printMode === "tiles" ? "tiles" : "fit";
 }
 
-document.getElementById("print-plan").addEventListener("click", () => {
+document.getElementById("print-plan").addEventListener("click", (e) => {
+  e.stopPropagation();
   closeMenu();
-  closeWizard();
-  closeCable();
-  closeImport();
-  closeCounts();
-  closeSplice();
-  closeCheck();
+  closePanels();
   selectedId = null;
   renderRoute();
   renderPrintModes();
   printPanel.hidden = false;
-  printPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 });
 
+const printModeSelect = document.getElementById("print-mode");
+
 function renderPrintModes() {
-  document.querySelectorAll("[data-print-mode]").forEach((b) =>
-    b.classList.toggle("secondary", b.dataset.printMode !== printMode()));
+  printModeSelect.value = printMode();
   buildSheet();
   const tiles = sheet.querySelectorAll(".map-tile").length;
   document.getElementById("print-mode-note").textContent = printMode() === "tiles"
@@ -44,17 +40,17 @@ function renderPrintModes() {
     : "";
 }
 
-document.querySelectorAll("[data-print-mode]").forEach((b) =>
-  b.addEventListener("click", () => {
-    plan.printMode = b.dataset.printMode;
-    savePlan();
-    renderPrintModes();
-  }));
+printModeSelect.addEventListener("change", () => {
+  plan.printMode = printModeSelect.value;
+  savePlan();
+  renderPrintModes();
+});
 
 function closePrint() {
   printPanel.hidden = true;
 }
 
+registerPanel(printPanel, closePrint);
 document.getElementById("print-cancel").addEventListener("click", closePrint);
 document.getElementById("print-go").addEventListener("click", () => {
   buildSheet();
@@ -66,20 +62,15 @@ window.addEventListener("beforeprint", () => {
   if (plan) buildSheet();
 });
 
-function el(tag, className, text) {
-  const e = document.createElement(tag);
-  if (className) e.className = className;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
 function buildSheet() {
   sheet.innerHTML = "";
 
   // Title block, with blanks the crew fills in by hand.
   const head = el("header", "sheet-head");
   const title = el("div", "sheet-title");
-  title.append(el("h1", "", "Splice Plan"), el("div", "sheet-sub", `Starts at ${plan.points[0].name}`));
+  const start = plan.points[0];
+  title.append(el("h1", "", "Splice Plan"), el("div", "sheet-sub", `Starts at ${start.name}`));
+  for (const line of detailLines(start)) title.append(el("div", "sheet-detail", line));
   const fields = el("div", "sheet-fields");
   for (const f of ["Job #", "Tech", "Date"]) {
     const field = el("div", "field");
@@ -93,11 +84,13 @@ function buildSheet() {
   // job stays readable; if it still won't fit, the boxes show counts only.
   const diagram = el("div", "sheet-diagram");
   const tiles = el("div", "map-tiles");
-  sheet.append(head, problemsBlock(), diagram, tiles, cableTable(), splitterTable(), homesTable(), legend(), spliceSheets());
+  const model = buildSpliceModel();
+  sheet.append(head, problemsBlock(), diagram, tiles, detailsTable(), cableTable(model), pathTable(), splitterTable(),
+    homesTable(), legend(), spliceSheets(model));
 
   for (const compact of [false, true]) {
     const tree = el("div", "route-tree");
-    tree.append(printBranch(plan.points[0], compact));
+    tree.append(printBranch(plan.points[0], compact, model));
     diagram.innerHTML = "";
     diagram.append(tree);
     if (compact) diagram.append(el("p", "map-note", "Each home is listed in the Homes table."));
@@ -111,14 +104,14 @@ function buildSheet() {
     if (scale >= MIN_MAP_SCALE) break;
   }
 
-  if (printMode() === "tiles") buildTiles(tiles, diagram);
+  if (printMode() === "tiles") buildTiles(tiles, diagram, model);
 }
 
 // The full-size map cut into page-sized pieces, each labeled with where
 // it sits, with a little overlap so the pieces line up.
-function buildTiles(tiles, diagram) {
+function buildTiles(tiles, diagram, model) {
   const full = el("div", "route-tree");
-  full.append(printBranch(plan.points[0], false));
+  full.append(printBranch(plan.points[0], false, model));
   const holder = el("div", "tile-measure");
   holder.append(full);
   tiles.append(holder);
@@ -158,17 +151,20 @@ function buildTiles(tiles, diagram) {
 }
 
 // Like the on-screen route, but a location's homes share one box.
-function printBranch(p, compact) {
+function printBranch(p, compact, model) {
   const branch = el("div", "branch");
   const stop = stopEl(p);
   stop.classList.remove("selected");
   branch.append(stop);
-  const cables = childCables(p.id);
-  const homeCables = cables.filter((c) => !c.through && point(c.to).type === "nid" && !childCables(c.to).length);
-  const others = cables.filter((c) => !homeCables.includes(c));
-  const rows = others.map((c) => [cableEl(c), printBranch(point(c.to), compact)]);
-  if (homeCables.length === 1) rows.push([cableEl(homeCables[0]), stopEl(point(homeCables[0].to))]);
-  else if (homeCables.length > 1) rows.push([dropsEl(homeCables), homeGroup(homeCables, compact)]);
+  const paths = childPaths(p.id);
+  const homePaths = paths.filter((x) => {
+    const c = pathCable(x);
+    return point(x.to).type === "nid" && !childPaths(x.to).length && !(c && c.through);
+  });
+  const others = paths.filter((x) => !homePaths.includes(x));
+  const rows = others.map((x) => [pathEl(x, model), printBranch(point(x.to), compact, model)]);
+  if (homePaths.length === 1) rows.push([pathEl(homePaths[0], model), stopEl(point(homePaths[0].to))]);
+  else if (homePaths.length > 1) rows.push([dropsEl(homePaths), homeGroup(homePaths, compact)]);
   if (rows.length) {
     const kids = el("div", "children");
     for (const r of rows) {
@@ -181,17 +177,18 @@ function printBranch(p, compact) {
   return branch;
 }
 
-function dropsEl(drops) {
+function dropsEl(paths) {
   const wrap = el("div", "cable");
-  const sizes = [...new Set(drops.map((c) => c.fibers))].map((n) => `${n}F`).join("/");
-  wrap.append(el("div", "cable-name", `${drops.length} drops`), el("div", "cable-size", sizes), el("div", "line"));
+  const cables = paths.map(pathCable).filter(Boolean);
+  const sizes = [...new Set(cables.map((c) => c.fibers))].map((n) => `${n}F`).join("/");
+  wrap.append(el("div", "cable-name", `${cables.length} drops`), el("div", "cable-size", sizes || "no drops yet"), el("div", "line"));
   return wrap;
 }
 
-function homeGroup(drops, compact) {
+function homeGroup(paths, compact) {
   const box = el("div", "stop nid home-group");
-  box.append(el("div", "type", "Customer NIDs"), el("div", "name", `${drops.length} homes`));
-  const homes = drops.map((c) => point(c.to));
+  box.append(el("div", "type", "Customer NIDs"), el("div", "name", `${paths.length} homes`));
+  const homes = paths.map((x) => point(x.to));
   if (compact) {
     const ds = homes.filter((h) => h.ds && homeSplitter(h)).map((h) => h.ds.port).sort((a, b) => a - b);
     const f2 = [...new Set(homes.map((h) => homeF2(h)).filter(Boolean).map((s) => s.f2))];
@@ -228,27 +225,29 @@ function problemsBlock() {
 }
 
 // A splice sheet for every location that has splicing, each kept whole.
-function spliceSheets() {
-  const model = buildSpliceModel();
+function spliceSheets(model) {
   const wrap = el("section", "sheet-splices");
   const locs = spliceLocations(model);
   if (!locs.length) return wrap;
   wrap.append(el("h2", "sheet-splices-title", "Splice sheets"));
   for (const loc of locs) {
     const block = el("div", "splice-block");
-    block.append(el("h3", "", `${loc.name} (${typeLabel(loc.type)})`), spliceTable(model, loc.id));
+    block.append(el("h3", "", `${loc.name} (${typeLabel(loc.type)})`));
+    const lines = detailLines(loc);
+    if (lines.length) block.append(el("p", "splice-details", lines.join(" · ")));
+    block.append(spliceTable(model, loc.id));
     wrap.append(block);
   }
   return wrap;
 }
 
 // One row per physical cable, not per span.
-function cableTable() {
+function cableTable(model) {
   const wrap = el("section", "sheet-block");
   wrap.append(el("h2", "", "Cables"));
   const table = el("table", "sheet-table");
   const head = el("tr");
-  for (const h of ["Cable", "Size", "From", "To", "Via", "Buffer tubes"]) head.append(el("th", "", h));
+  for (const h of ["Cable", "Type", "Size", "From", "To", "Via", "Fibers used", "Buffer tubes"]) head.append(el("th", "", h));
   const thead = el("thead");
   thead.append(head);
   table.append(thead);
@@ -267,10 +266,12 @@ function cableTable() {
     }
     tr.append(
       el("td", "strong", c.name),
+      el("td", "", CABLE_KINDS[cableKind(c)]),
       el("td", "", `${c.fibers}F`),
       el("td", "", point(spans[0].from).name),
       el("td", "", point(spans[spans.length - 1].to).name),
       el("td", "", via || "—"),
+      el("td", "wrap", cableNote(model, c) || "—"),
       tubes,
     );
     table.append(tr);
@@ -307,10 +308,50 @@ function splitterTable() {
   return wrap;
 }
 
-// Drops to homes go in the homes table instead.
-function isDrop(c) {
-  const to = point(c.to);
-  return to && to.type === "nid" && !c.through;
+// Paths with conduit or footage.
+function pathTable() {
+  const rows = plan.paths.filter((x) => conduitLabel(x.conduit));
+  const wrap = el("section", "sheet-block");
+  if (!rows.length) return wrap;
+  wrap.append(el("h2", "", "Paths and conduit"));
+  const table = el("table", "sheet-table");
+  const thead = el("thead");
+  const head = el("tr");
+  for (const h of ["From", "To", "Conduit", "Ducts", "Color", "Footage", "Cable"]) head.append(el("th", "", h));
+  thead.append(head);
+  table.append(thead);
+  for (const x of rows) {
+    const cd = x.conduit;
+    const c = pathCable(x);
+    const tr = el("tr");
+    tr.append(el("td", "", point(x.from).name), el("td", "", point(x.to).name), el("td", "strong", cd.size || "—"),
+      el("td", "", cd.size ? String(cd.ducts || 1) : "—"), el("td", "", cd.color || "—"),
+      el("td", "", cd.footage ? `${cd.footage} ft` : "—"), el("td", "", c ? `${c.name} (${c.fibers}F)` : "none"));
+    table.append(tr);
+  }
+  wrap.append(table);
+  return wrap;
+}
+
+// Cabinet and location details.
+function detailsTable() {
+  const rows = plan.points.filter((p) => detailLines(p).length);
+  const wrap = el("section", "sheet-block");
+  if (!rows.length) return wrap;
+  wrap.append(el("h2", "", "Location details"));
+  const table = el("table", "sheet-table");
+  const thead = el("thead");
+  const head = el("tr");
+  for (const h of ["Location", "Type", "Details"]) head.append(el("th", "", h));
+  thead.append(head);
+  table.append(thead);
+  for (const p of rows) {
+    const tr = el("tr");
+    tr.append(el("td", "strong", p.name), el("td", "", typeLabel(p.type)), el("td", "wrap", detailLines(p).join(" · ")));
+    table.append(tr);
+  }
+  wrap.append(table);
+  return wrap;
 }
 
 function homesTable() {
@@ -329,12 +370,13 @@ function homesTable() {
   table.append(thead);
   homes.forEach((h, i) => {
     const c = incomingCable(h.id);
+    const path = incomingPath(h.id);
     const tr = el("tr");
     tr.append(
       el("td", "", String(i + 1)),
       el("td", "strong", hasAddress(h) ? h.name : "No address yet"),
       el("td", "strong", h.lot || "—"),
-      el("td", "", c ? point(c.from).name : "—"),
+      el("td", "", path ? point(path.from).name : "—"),
       el("td", "", c ? c.name : "—"),
       el("td", "", c ? `${c.fibers}F` : "—"),
       el("td", "strong", homeF2(h) ? String(homeF2(h).f2) : "—"),

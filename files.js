@@ -1,7 +1,7 @@
 // Save and open plan files, so a plan can be backed up, emailed or
 // handed to a crew instead of living only in one browser.
 
-const PLAN_FILE_VERSION = 1;
+const PLAN_FILE_VERSION = 2;
 
 document.getElementById("save-plan").addEventListener("click", () => {
   const data = JSON.stringify({ app: "splice-planner", version: PLAN_FILE_VERSION, plan }, null, 2);
@@ -39,13 +39,10 @@ openInput.addEventListener("change", () => {
       return alert("That file isn't a splice plan. Pick a .json file saved from this app.");
     }
     if (plan && !confirm("Open this plan? The plan on screen will be replaced. Save it first if you need it.")) return;
-    plan = loaded;
+    plan = migratePlan(loaded);
     savePlan();
     closeMenu();
-    closeWizard();
-    closeCable();
-    closeImport();
-    closeCounts();
+    closePanels();
     selectedId = null;
     show("route");
   };

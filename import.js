@@ -1,6 +1,7 @@
-// Import homes: read an address list (usually CSV), walk the user
-// through cleaning it up, then add one Customer NID and drop per home.
-// Uses plan, point, makeId, finish, DROP_COUNTS etc. from app.js.
+// Import homes: read an address list (usually CSV) for the whole job,
+// walk the user through cleaning it up, and put the homes on the
+// unassigned list. From there they're assigned to the location that
+// feeds them, each getting a Customer NID and (optionally) a drop.
 
 const importPanel = document.getElementById("import-panel");
 const importSteps = {
@@ -12,23 +13,27 @@ const importSteps = {
 // State for the import in progress.
 let imp = null;
 
-function importHomes(fromId) {
-  closeWizard();
-  closeCable();
-  imp = { fromId, rows: [], hasHeader: false, columns: [], dropFibers: 1, include: {} };
-  document.getElementById("import-title").textContent = `Import homes fed from ${point(fromId).name}`;
+function importHomes() {
+  closePanels();
+  closeMenu();
+  imp = { rows: [], hasHeader: false, columns: [], include: {} };
   document.getElementById("import-file").value = "";
   document.getElementById("import-paste").value = "";
   document.getElementById("import-file-error").hidden = true;
   importPanel.hidden = false;
   showImportStep("file");
-  importPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function closeImport() {
   importPanel.hidden = true;
   imp = null;
 }
+
+registerPanel(importPanel, closeImport);
+document.getElementById("import-homes").addEventListener("click", (e) => {
+  e.stopPropagation();
+  importHomes();
+});
 
 function showImportStep(name) {
   const order = ["file", "columns", "fix"];
@@ -212,22 +217,17 @@ function renderColumns() {
     opt.append(box, text);
     list.append(opt);
   });
-  const lotGrid = document.getElementById("import-lot");
-  lotGrid.innerHTML = "";
-  [{ label: "None", i: -1 }, ...names.map((label, i) => ({ label, i }))].forEach(({ label, i }) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "big-btn" + (imp.lotCol === i ? "" : " secondary");
-    b.textContent = label;
-    b.addEventListener("click", () => {
-      imp.lotCol = i;
-      imp.columns = imp.columns.filter((c) => c !== i);
-      renderColumns();
-    });
-    lotGrid.append(b);
-  });
+  const lotSelect = document.getElementById("import-lot");
+  lotSelect.replaceChildren(...selectEl([{ value: -1, label: "None" }, ...names.map((label, i) => ({ value: i, label }))]).childNodes);
+  lotSelect.value = String(imp.lotCol);
   document.getElementById("import-columns-go").disabled = imp.columns.length === 0 && imp.lotCol < 0;
 }
+
+document.getElementById("import-lot").addEventListener("change", (e) => {
+  imp.lotCol = Number(e.target.value);
+  imp.columns = imp.columns.filter((c) => c !== imp.lotCol);
+  renderColumns();
+});
 
 document.getElementById("import-columns-go").addEventListener("click", () => {
   imp.include = {};
@@ -249,7 +249,6 @@ function fixOn(name) {
 }
 
 document.querySelectorAll("[data-fix]").forEach((box) => box.addEventListener("change", renderPreview));
-document.getElementById("import-ds").addEventListener("change", renderPreview);
 
 function cleanAddress(raw) {
   let a = raw;
@@ -278,7 +277,8 @@ function cleanAddress(raw) {
 // Every row with its cleaned address and any problems found.
 function previewRows() {
   const data = imp.hasHeader ? imp.rows.slice(1) : imp.rows;
-  const existing = new Set(plan.points.filter((p) => p.type === "nid").map((p) => p.name.toLowerCase()));
+  const existing = new Set([...plan.points.filter((p) => p.type === "nid"), ...plan.unassigned]
+    .map((p) => p.name.toLowerCase()));
   const seen = new Set();
   return data.map((r, i) => {
     const raw = imp.columns.map((c) => r[c] || "").filter((x) => x.trim()).join(" ");
@@ -294,7 +294,7 @@ function previewRows() {
       skip = true;
     } else {
       if (seen.has(key) || existing.has(name.toLowerCase())) {
-        problems.push(existing.has(name.toLowerCase()) ? "already on the route" : "duplicate");
+        problems.push(existing.has(name.toLowerCase()) ? "already in the plan" : "duplicate");
         if (fixOn("dupes")) skip = true;
       }
       if (address && !/^\d/.test(address)) problems.push("no house number");
@@ -341,59 +341,143 @@ function renderPreview() {
     `${rows.length} rows read. ${fixed} cleaned up. ${flagged} need a look (marked in red). ` +
     `Untick any home you don't want.`;
   const go = document.getElementById("import-go");
-  go.textContent = `Add ${count} home${count === 1 ? "" : "s"}`;
+  go.textContent = `Add ${count} home${count === 1 ? "" : "s"} to the unassigned list`;
   imp.ready = rows.filter((r) => r.include);
-
-  // Distributed split: each home gets the next free DS port on the
-  // splitter feeding this location. Blocked if there aren't enough ports.
-  const loc = feedingLocation(imp.fromId);
-  imp.splitter = loc ? splittersAt(loc)[0] : null;
-  document.getElementById("import-ds-row").hidden = !imp.splitter;
-  const dsError = document.getElementById("import-ds-error");
-  dsError.hidden = true;
-  let blocked = false;
-  if (imp.splitter) {
-    const free = splitterPorts(imp.splitter) - usedPorts(imp.splitter).size;
-    document.getElementById("import-ds-label").textContent =
-      `Distributed split: give each home a DS port on ${imp.splitter.name} at ${loc.name} (${free} free)`;
-    if (document.getElementById("import-ds").checked && count > free) {
-      dsError.textContent = `Only ${free} DS ports are free on ${imp.splitter.name}, but ${count} homes are ticked. ` +
-        "Untick some homes or turn off distributed split.";
-      dsError.hidden = false;
-      blocked = true;
-    }
-  }
-  go.disabled = count === 0 || blocked;
+  go.disabled = count === 0;
 }
-
-const dropGrid = document.getElementById("import-drop");
-function renderDropChoices() {
-  dropGrid.innerHTML = "";
-  for (const n of DROP_COUNTS) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "big-btn" + (imp && imp.dropFibers === n ? "" : " secondary");
-    b.textContent = n;
-    b.addEventListener("click", () => {
-      imp.dropFibers = n;
-      renderDropChoices();
-    });
-    dropGrid.append(b);
-  }
-}
-
-document.getElementById("import-columns-go").addEventListener("click", renderDropChoices);
 
 document.getElementById("import-go").addEventListener("click", () => {
-  let drop = plan.cables.filter((c) => /^Drop \d+$/.test(c.name)).length;
-  const useDS = imp.splitter && document.getElementById("import-ds").checked;
   for (const r of imp.ready) {
-    const stop = { id: makeId(), type: "nid", label: typeLabel("nid"), name: r.name, equipment: [] };
-    if (r.lot) stop.lot = r.lot;
-    if (useDS) stop.ds = { splitterId: imp.splitter.id, port: nextFreePort(imp.splitter) };
-    plan.points.push(stop);
-    plan.cables.push({ id: makeId(), name: `Drop ${++drop}`, from: imp.fromId, to: stop.id, fibers: imp.dropFibers });
+    const home = { id: makeId(), name: r.name };
+    if (r.lot) home.lot = r.lot;
+    plan.unassigned.push(home);
   }
   closeImport();
-  finish();
+  savePlan();
+  openAssign(null);
 });
+
+// --- Unassigned homes ---
+
+function updateUnassignedButton() {
+  const b = document.getElementById("unassigned-homes");
+  const n = plan.unassigned.length;
+  b.hidden = !n;
+  b.textContent = `Unassigned homes (${n})`;
+}
+
+document.getElementById("unassigned-homes").addEventListener("click", (e) => {
+  e.stopPropagation();
+  openAssign(null);
+});
+
+// Tick homes on the unassigned list and pick the location that feeds them.
+function openAssign(fromId) {
+  const feeders = plan.points.filter((p) => p.type !== "nid");
+  const picked = new Set(plan.unassigned.map((h) => h.id));
+  openForm(`Unassigned homes (${plan.unassigned.length})`, (body, foot) => {
+    if (!plan.unassigned.length) {
+      body.append(el("p", "hint", "No homes waiting. Use Import homes in the top bar to bring in an address list."));
+      foot.append(btnEl("Close", finish, "btn big"));
+      return;
+    }
+    const all = el("label", "toggle");
+    const allBox = inputEl("checkbox");
+    all.append(allBox, document.createTextNode("All"));
+    const listEl = el("div", "preview-wrap");
+    const table = el("table", "preview");
+    listEl.append(table);
+    body.append(all, listEl);
+
+    const grid = el("div", "form-grid");
+    const from = selectEl(feeders.map((p) => ({ value: p.id, label: `${p.name} (${typeLabel(p.type)})` })),
+      fromId || feeders[feeders.length - 1].id);
+    const drop = dropSelect(1);
+    grid.append(fieldEl("Fed from", from), fieldEl("Drop cable", drop));
+    body.append(grid);
+    const dsRow = el("label", "toggle");
+    const ds = inputEl("checkbox");
+    const dsLabel = el("span");
+    dsRow.append(ds, dsLabel);
+    body.append(dsRow);
+
+    let go;
+    function render() {
+      table.innerHTML = "";
+      for (const h of plan.unassigned) {
+        const tr = el("tr");
+        const tdBox = el("td");
+        const box = inputEl("checkbox");
+        box.checked = picked.has(h.id);
+        box.addEventListener("change", () => {
+          if (box.checked) picked.add(h.id);
+          else picked.delete(h.id);
+          refresh();
+        });
+        tdBox.append(box);
+        const tdDel = el("td");
+        tdDel.append(btnEl("×", () => {
+          if (!confirm(`Take ${h.name} off the list?`)) return;
+          plan.unassigned = plan.unassigned.filter((x) => x !== h);
+          picked.delete(h.id);
+          savePlan();
+          if (!plan.unassigned.length) return finish();
+          render();
+        }, "btn ghost small"));
+        tr.append(tdBox, el("td", "", hasAddress(h) && h.lot ? `${h.name} (${lotName(h.lot)})` : h.name), tdDel);
+        table.append(tr);
+      }
+      refresh();
+    }
+
+    // Distributed split: each home gets the next free DS port on the
+    // splitter feeding that location. Blocked if there aren't enough.
+    function splitterFor() {
+      const loc = feedingLocation(from.value);
+      return loc ? { loc, s: splittersAt(loc)[0] } : null;
+    }
+
+    function refresh() {
+      allBox.checked = picked.size === plan.unassigned.length;
+      const n = picked.size;
+      const hit = splitterFor();
+      dsRow.hidden = !hit;
+      formError.hidden = true;
+      let blocked = false;
+      if (hit) {
+        const free = splitterPorts(hit.s) - usedPorts(hit.s).size;
+        dsLabel.textContent = `Distributed split: give each home a DS port on ${hit.s.name} at ${hit.loc.name} (${free} free)`;
+        if (ds.checked && n > free) {
+          formError.textContent = `Only ${free} DS ports are free on ${hit.s.name}, but ${n} homes are ticked.`;
+          formError.hidden = false;
+          blocked = true;
+        }
+      }
+      if (go) {
+        go.textContent = `Assign ${n} home${n === 1 ? "" : "s"}`;
+        go.disabled = !n || blocked;
+      }
+    }
+
+    allBox.addEventListener("change", () => {
+      picked.clear();
+      if (allBox.checked) for (const h of plan.unassigned) picked.add(h.id);
+      render();
+    });
+    from.addEventListener("change", refresh);
+    ds.addEventListener("change", refresh);
+
+    go = formButtons(foot, () => {
+      const hit = ds.checked && splitterFor();
+      const fibers = Number(drop.value);
+      for (const h of plan.unassigned.filter((x) => picked.has(x.id))) {
+        const stop = addLocation(from.value, "nid", h.name, h.lot ? { lot: h.lot } : {});
+        if (hit) stop.ds = { splitterId: hit.s.id, port: nextFreePort(hit.s) };
+        if (fibers) plan.cables.push({ id: makeId(), name: nextCableName("cable", true), from: from.value, to: stop.id, fibers });
+      }
+      plan.unassigned = plan.unassigned.filter((x) => !picked.has(x.id));
+      finish();
+    }, "Assign");
+    render();
+  }, true);
+}

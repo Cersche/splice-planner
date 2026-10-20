@@ -18,14 +18,24 @@ you have signal and it will work offline after that.
 
 ## Using it
 
-1. Pick where the route starts: **Cabinet**, **Splice** or **Other**.
-2. Tap any location for its menu: add a destination, import homes from a CSV,
-   add a splitter, set F2/DS counts, see its splice sheet, rename, move or remove.
-3. Tap a cable to see its color code, rename it, change its size or add a stop on it.
-4. **Check plan** lists problems and warnings. Tap one to find it.
-5. **Save plan** downloads the plan as a file. **Open plan** loads one back.
-6. **Print / Save PDF (11x17)** prints the field sheet: the map, cables,
-   splitters, homes, color code and a splice sheet for every closure.
+1. Pick where the route starts: **Cabinet** or **Other** (handhole, pedestal,
+   vault, manhole, or type your own).
+2. Tap the **+** beside a location to add the next one after it. It's joined
+   by a path (the line); a cable doesn't have to go on it yet.
+3. Tap a line to set its conduit (size, ducts, color, footage) and its cable:
+   type (cable, splitter tail, terminal tail), name, size, whether it passes
+   through, and which incoming fibers it's spliced to (automatic, or pick
+   them yourself). Each cable shows a label like "1-12 to HH2, 13-48 spare".
+4. Tap a location for its menu: equipment (splitters several at a time,
+   shelves from templates), details, cross-connects, splice sheet, rename,
+   move or remove.
+5. **Import homes** brings in an address list for the whole job. Homes wait
+   on the unassigned list until you pick the location that feeds them.
+6. **Check plan** lists problems and warnings. Tap one to find it.
+7. **Save plan** downloads the plan as a file. **Open plan** loads one back.
+8. **Print / Save PDF (11x17)** prints the field sheet: the map, details,
+   cables, conduit, splitters, homes, color code and a splice sheet for
+   every closure.
 
 Plans are saved in the browser as you work. Use **Save plan** to keep a copy
 or send it to someone else.
