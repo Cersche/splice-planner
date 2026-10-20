@@ -388,12 +388,14 @@ function renderRoute() {
     // Keep the card being worked on where it was on screen.
     const anchor = rememberAnchor();
     tree.innerHTML = "";
-    tree.append(branchEl(plan.points[0]));
+    // The Grid layout (grid.js) places each location in a cell of its own.
+    tree.append(layoutNow() === "grid" ? gridBoard() : branchEl(plan.points[0]));
     restoreAnchor(anchor);
     drawFans();
     scheduleMinimap();
   }
   renderLayoutPick();
+  renderGridButtons();
   updateUnassignedButton();
   renderHeader();
 }
@@ -478,6 +480,7 @@ function fanEl(paths) {
 }
 
 function drawFans() {
+  if (layoutNow() === "grid") return drawGridLines();
   // Screen sizes are zoomed; the drawing is in the route's own units.
   const z = typeof routeZoom === "function" ? routeZoom() : 1;
   for (const fan of document.querySelectorAll("#route-tree .fan")) {
@@ -761,6 +764,7 @@ function addLocation(fromId, type, name, extra) {
   const stop = { id: makeId(), type, label: typeLabel(type), name, equipment: [], ...extra };
   plan.points.push(stop);
   plan.paths.push({ id: makeId(), from: fromId, to: stop.id });
+  gridPlace(stop, fromId);
   // Something just added shouldn't vanish into a fold.
   unfoldTo(stop.id);
   return stop;

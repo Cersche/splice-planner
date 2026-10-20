@@ -8,13 +8,14 @@
 // Folding is the Compact layout. Each person picks a layout from the
 // Layout menu: Full (everything open, best for small jobs), Compact
 // (folded, for big ones), Table (a row per home, grouped by location),
-// or Auto, which picks Full or Compact by the number of homes.
+// Grid (grid.js: lay locations out yourself, in any direction), or Auto,
+// which picks Full or Compact by the number of homes.
 //
 // The layout and what's open are view settings, kept on this device, not
 // in the plan.
 
 const VIEW_KEY = "splicePlanner.view";
-const LAYOUTS = { auto: "Auto", full: "Full", compact: "Compact", table: "Table" };
+const LAYOUTS = { auto: "Auto", full: "Full", compact: "Compact", table: "Table", grid: "Grid" };
 // Auto turns Compact past this many homes.
 const AUTO_COMPACT_HOMES = 40;
 
@@ -196,6 +197,7 @@ function renderLayoutPick() {
     { value: "full", label: "Full: everything open" },
     { value: "compact", label: "Compact: homes folded" },
     { value: "table", label: "Table: a row per home" },
+    { value: "grid", label: "Grid: build any direction (advanced)" },
   ]).childNodes);
   layoutPick.value = fold.layout;
   foldAllBtn.hidden = layoutNow() !== "compact";
