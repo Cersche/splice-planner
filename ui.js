@@ -186,3 +186,31 @@ function offerUndo(text, before) {
     showNote("Undone.");
   });
 }
+
+// --- Locks ---
+// Values the app fills in (F2, DS, fiber picks, names) carry a small
+// lock. Locked: the app keeps the value up to date and shows it. Tap to
+// unlock and set it by hand; tap again to hand it back to the app.
+
+function lockEl(locked, onToggle, what = "this") {
+  const b = el("button", "lock-btn" + (locked ? "" : " open"));
+  b.type = "button";
+  b.append(iconEl(locked ? "lock" : "unlock"));
+  b.title = locked ? `Automatic. Tap to unlock and set ${what} by hand.` : `Set by hand. Tap to lock ${what} back to automatic.`;
+  b.setAttribute("aria-label", b.title);
+  b.setAttribute("aria-pressed", String(!locked));
+  b.addEventListener("pointerdown", (e) => e.stopPropagation());
+  b.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onToggle(!locked);
+  });
+  return b;
+}
+
+// The lock, then the app's value (locked) or the controls to change it.
+function lockField(locked, autoView, editor, onToggle, what) {
+  const wrap = el("span", "lock-field" + (locked ? " locked" : " unlocked"));
+  wrap.append(lockEl(locked, onToggle, what), locked ? autoView : editor);
+  return wrap;
+}

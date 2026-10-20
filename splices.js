@@ -179,16 +179,21 @@ function buildSpliceModel() {
     return pairs;
   }
 
-  // Splice rows at one location.
+  // Splice rows at one location. Each row also says what it joins, for
+  // drawings: src and dst are { kind: "fiber", n } (incoming fiber n),
+  // { kind: "split", id } or { kind: "cable", id, n } (outgoing fiber).
   function rowsAt(locId) {
     const L = point(locId);
     const rows = [];
     const c = incomingCable(locId);
     const here = splittersAt(L);
+    const inMap = c ? assign(cableStart(c)).map : new Map();
+    const byItem = new Map([...inMap].map(([n, it]) => [it, n]));
     for (const s of here) {
       const from = s.f2 && c && s.f2 <= c.fibers ? fiberLabel(cableStart(c), s.f2) : source(L, `split-in:${s.id}`);
-      rows.push({ from, to: { text: `${s.name} input`, colors: "" }, note: s.f2 ? `F2 ${s.f2}` : "F2 not set", key: `split:${s.id}:in`,
-        phase: Math.max(phaseIdx(s), c ? phaseIdx(c) : 0) });
+      rows.push({ from, to: { text: `${s.name} input`, colors: "" }, note: s.f2 ? f2Text(s.f2) : "F2 not set", key: `split:${s.id}:in`,
+        phase: Math.max(phaseIdx(s), c ? phaseIdx(c) : 0),
+        src: s.f2 && c && s.f2 <= c.fibers ? { kind: "fiber", n: s.f2 } : null, dst: { kind: "split", id: s.id } });
     }
     for (const d of childCables(locId).filter((x) => !x.through)) {
       for (const f of childFibers(d)) {
@@ -206,7 +211,12 @@ function buildSpliceModel() {
         // A splice belongs to the later phase of the two things it joins.
         const sp = here.find((s) => f.item.startsWith(`port:${s.id}:`));
         const phase = Math.max(phaseIdx(d), sp ? phaseIdx(sp) : c ? phaseIdx(c) : 0);
-        rows.push({ from, to: fiberLabel(d, f.out), note: describe(f.item), key: `fiber:${d.id}:${f.out}`, phase });
+        let src = null;
+        if (sp) src = { kind: "split", id: sp.id };
+        else if (c && d.picks) src = f.in ? { kind: "fiber", n: f.in } : null;
+        else if (c && byItem.has(f.item)) src = { kind: "fiber", n: byItem.get(f.item) };
+        rows.push({ from, to: fiberLabel(d, f.out), note: describe(f.item), key: `fiber:${d.id}:${f.out}`, phase,
+          src, dst: { kind: "cable", id: d.id, n: f.out } });
       }
     }
     const through = childCables(locId).filter((x) => x.through)
@@ -263,6 +273,7 @@ function spliceTable(model, locId) {
   for (const r of rows) {
     const tr = document.createElement("tr");
     if (r.from.missing) tr.className = "problem";
+    else if (r.to.tube && r.to.colors.includes("tube")) tintTube(tr, r.to.tube);
     const existing = v !== null && r.phase < v;
     if (existing) tr.classList.add("existing");
     const cell = (text, cls) => {

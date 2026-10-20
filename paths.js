@@ -77,8 +77,9 @@ function rangeText(a, b) {
 
 // --- Cable labels ---
 // "1-12 to Handhole 2, 13-48 spare": which fibers are used and where
-// they leave the cable.
-function cableNote(model, c) {
+// they leave the cable. The route shows only the used ranges
+// ("1-12 → Handhole 2"); spares are in the cable's own dialog.
+function cableNote(model, c, spares = true) {
   const start = cableStart(c);
   const { map } = model.assign(start);
   const exits = model.exits(start);
@@ -91,7 +92,35 @@ function cableNote(model, c) {
     else runs.push({ from: n, to: n, where });
   }
   if (runs.length === 1 && !runs[0].where) return "";
+  if (!spares) return runs.filter((r) => r.where).map((r) => `${rangeText(r.from, r.to)} → ${r.where}`).join("\n");
   return runs.map((r) => `${rangeText(r.from, r.to)} ${r.where ? `to ${r.where}` : "spare"}`).join(", ");
+}
+
+// Every run of fibers on a cable, spares too, for its dialog.
+function fiberUseList(model, c) {
+  const start = cableStart(c);
+  const { map } = model.assign(start);
+  const exits = model.exits(start);
+  const list = el("ul", "fiber-use");
+  let run = null;
+  const flush = () => {
+    if (!run) return;
+    const li = el("li", run.where ? "" : "spare");
+    li.append(el("span", "mono", `#${rangeText(run.from, run.to)}`), el("span", "", rangeColors(start.fibers, run.from, run.to)),
+      el("b", "", run.where ? `to ${run.where}` : "spare"));
+    list.append(li);
+  };
+  for (let n = 1; n <= start.fibers; n++) {
+    const it = map.get(n);
+    const where = it ? exits.get(it) || "?" : null;
+    if (run && run.where === where) run.to = n;
+    else {
+      flush();
+      run = { from: n, to: n, where };
+    }
+  }
+  flush();
+  return list;
 }
 
 // "Dist 1 · 48F · 1-12 to HH2, 13-48 spare"
@@ -117,10 +146,10 @@ function pathEl(path, model) {
       el("div", "cable-size", `${c.fibers}F` + (c.through ? " · continued" : "") +
         (kind !== "cable" ? ` · ${CABLE_KINDS[kind]}` : "") + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
     if (!c.through && !isDrop(c) && model) {
-      const note = cableNote(model, c);
+      const note = cableNote(model, c, false);
       if (note) {
         const n = el("div", "cable-note", note);
-        n.title = note;
+        n.title = `${note}\nTap for spares and the color code.`;
         b.append(n);
       }
     }
@@ -143,7 +172,29 @@ function pathEl(path, model) {
 
 // --- Path form ---
 
+// What a guest sees on tapping a line: the cable, where its fibers go,
+// and its color code. Nothing to change.
+function openPathView(toId) {
+  const path = incomingPath(toId);
+  const c = pathCable(path);
+  const model = buildSpliceModel();
+  openForm(`${point(path.from).name} → ${point(path.to).name}`, (body, foot) => {
+    const cd = conduitLabel(path.conduit);
+    if (cd) body.append(el("p", "", `Conduit: ${cd}`));
+    if (!c) body.append(el("p", "hint", "No cable on this path."));
+    else {
+      body.append(el("p", "cable-annotation", [c.name, `${c.fibers}F`, CABLE_KINDS[cableKind(c)], c.through ? THROUGH_LABELS[c.through] : ""].filter(Boolean).join(" · ")));
+      if (!isDrop(c)) body.append(el("h4", "form-section", "Fiber use"), fiberUseList(model, cableStart(c)));
+      body.append(el("h4", "form-section", "Color code"), colorCodeList(c.fibers));
+    }
+    foot.append(btnEl("Close", finish, "btn big"));
+  });
+  openPathId = toId;
+  renderRoute();
+}
+
 function openPath(toId) {
+  if (isGuest()) return openPathView(toId);
   const path = incomingPath(toId);
   const from = point(path.from);
   const to = point(path.to);
@@ -180,16 +231,27 @@ function openPath(toId) {
     const newBox = el("div", "form-grid");
     const startKind = c && !c.through ? c.kind || "cable" : "cable";
     const kind = selectEl(Object.entries(CABLE_KINDS).map(([value, label]) => ({ value, label })), startKind);
-    const defaultName = () => nextCableName(kind.value, toHome);
-    const name = inputEl("text", c && !c.through ? c.name : defaultName());
-    let nameTouched = !!(c && !c.through);
-    name.addEventListener("input", () => (nameTouched = true));
-    kind.addEventListener("change", () => {
-      if (!nameTouched) name.value = defaultName();
-    });
-    const fibers = selectEl(CABLE_SIZES.map((n) => ({ value: n, label: `${n}F` })),
+    // The name: the app's next "Cable n" (locked), or typed by hand.
+    const own = c && !c.through ? c : null;
+    const defaultName = () => (own && (own.kind || "cable") === kind.value && AUTO_CABLE_NAME.test(own.name) ? own.name : nextCableName(kind.value, toHome));
+    const name = inputEl("text", own ? own.name : defaultName());
+    let nameManual = !!own && !AUTO_CABLE_NAME.test(own.name);
+    const nameBox = el("div");
+    const renderName = () => {
+      if (!nameManual) name.value = defaultName();
+      nameBox.replaceChildren(lockField(!nameManual, el("span", "auto-val", name.value), name, (lock) => {
+        nameManual = !lock;
+        renderName();
+        if (!lock) name.focus();
+      }, "the name"));
+    };
+    kind.addEventListener("change", renderName);
+    renderName();
+    // Sizes from older or imported plans stay on the list.
+    const sizes = c && !CABLE_SIZES.includes(c.fibers) ? [...CABLE_SIZES, c.fibers].sort((a, b) => a - b) : CABLE_SIZES;
+    const fibers = selectEl(sizes.map((n) => ({ value: n, label: `${n}F` })),
       c && !c.through ? c.fibers : toHome ? 1 : 12);
-    newBox.append(fieldEl("Type", kind), fieldEl("Name", name), fieldEl("Size", fibers));
+    newBox.append(fieldEl("Type", kind), fieldEl("Name", nameBox), fieldEl("Size", fibers));
     const phaseSel = phaseSelect(c);
     if (phaseSel) newBox.append(fieldEl("Phase", phaseSel));
     body.append(newBox);
@@ -200,14 +262,22 @@ function openPath(toId) {
     // Fiber picker: which incoming fibers go onto this cable.
     const pickBox = el("div", "pick-box");
     body.append(pickBox);
-    const pickMode = selectEl([{ value: "auto", label: "Automatic (suggested)" }, { value: "pick", label: "Choose fibers" }],
-      c && !c.through && c.picks ? "pick" : "auto");
+    // Locked: the app picks the fibers. Unlocked: ranges and the grid.
+    const pickMode = { value: c && !c.through && c.picks ? "pick" : "auto" };
     let ranges = c && !c.through && c.picks ? c.picks.map((r) => ({ ...r })) : null;
     const rangesEl = el("div", "ranges");
+    const pickLock = el("div");
+    const renderPickLock = () => pickLock.replaceChildren(lockField(pickMode.value !== "pick",
+      el("span", "auto-val", "Automatic: the app picks them as homes and splitters are added further on"), el("span", "auto-val", "Chosen by hand, below"),
+      (lock) => {
+        pickMode.value = lock ? "auto" : "pick";
+        renderPickLock();
+        renderRanges();
+      }, "the fibers"));
     if (inCable) {
+      renderPickLock();
       pickBox.append(el("h4", "form-section", `Fibers spliced from ${inCable.name} at ${from.name}`),
-        fieldEl("Fibers", pickMode), rangesEl);
-      pickMode.addEventListener("change", renderRanges);
+        fieldEl("Fibers", pickLock), rangesEl);
       fibers.addEventListener("change", () => {
         if (pickMode.value === "pick" && !rangesTouched) {
           ranges = suggestPicks(model, c, inCable, Number(fibers.value));
@@ -220,8 +290,7 @@ function openPath(toId) {
     function renderRanges() {
       rangesEl.innerHTML = "";
       if (pickMode.value !== "pick") {
-        rangesEl.append(el("p", "hint", "The app picks fibers as homes and splitters are added further on. " +
-          "The splice sheet shows what it picked."));
+        rangesEl.append(el("p", "hint", "The splice sheet shows what it picked. Unlock to choose fibers yourself."));
         return;
       }
       if (!ranges) ranges = suggestPicks(model, c, inCable, Number(fibers.value));
@@ -272,6 +341,15 @@ function openPath(toId) {
         ranges.push({ inFrom: lastIn + 1, inTo: lastIn + 1, outFrom: lastOut + 1 });
         renderRanges();
       }, "btn ghost"));
+      rangesEl.append(fiberGrid({
+        inCable, outName, outFibers: Number(fibers.value), taken: fixedInUse(inCable.id, c && c.id),
+        getPairs: () => expandPicks(ranges),
+        setPairs: (pairs) => {
+          ranges = toRanges(pairs);
+          rangesTouched = true;
+          renderRanges();
+        },
+      }));
     }
 
     function refresh() {
@@ -284,6 +362,11 @@ function openPath(toId) {
     }
     mode.addEventListener("change", refresh);
     name.addEventListener("change", () => pickMode.value === "pick" && renderRanges());
+
+    // Everything on this cable, spares too, and its color code.
+    if (c && !c.through && !isDrop(c)) {
+      body.append(el("h4", "form-section", `Fiber use on ${c.name}`), fiberUseList(model, c));
+    }
     refresh();
 
     // Color code and label for a cable that's already placed.
@@ -352,7 +435,7 @@ function openPath(toId) {
         return "";
       }
       // A cable starting here.
-      const cableName = name.value.trim();
+      const cableName = nameManual ? name.value.trim() : defaultName();
       if (!cableName) return "Name the cable.";
       const n = Number(fibers.value);
       let picks = null;
@@ -392,7 +475,7 @@ function f2Stuck(spans, fibers) {
   const stuck = [];
   for (const s of spans) {
     for (const sp of splittersAt(point(s.to))) {
-      if (sp.f2 > fibers) stuck.push(`${sp.name} at ${point(s.to).name} is on F2 ${sp.f2}`);
+      if (sp.f2Manual && sp.f2 > fibers) stuck.push(`${sp.name} at ${point(s.to).name} is on F2 ${sp.f2}`);
     }
   }
   return stuck.length ? `The cable can't be ${fibers}F: ${stuck.join("; ")}. Change those F2 counts first.` : "";
@@ -462,7 +545,7 @@ function colorCodeList(n) {
   const list = el("div", "tube-list");
   const fibers = colorCode(n);
   for (let t = 1; t <= tubeCount(n); t++) {
-    const row = el("div", "tube-row");
+    const row = tintTube(el("div", "tube-row"), colorAt(t - 1));
     const head = el("div", "tube-head");
     const tc = colorAt(t - 1);
     head.append(swatch(tc), document.createTextNode(` Tube ${t} · ${tc.name}`));
@@ -532,4 +615,183 @@ function insertStopForm(path) {
       finish();
     }, "Add stop");
   });
+}
+
+// Names the app gives cables: "Cable 3", "Drop 12", "Splitter tail 1".
+const AUTO_CABLE_NAME = /^(Cable|Drop|Splitter tail|Terminal tail) \d+$/;
+
+// --- Fiber grid ---
+// The incoming cable's fibers on the left, the new cable's on the
+// right, each tube on a wash of its color. Tap fibers on the left
+// (Shift+tap for a run, the tube name for a whole tube), then tap where
+// they start on the right, or drag them across. Tap a fiber on the
+// right to take it off.
+function fiberGrid({ inCable, outName, outFibers, taken, getPairs, setPairs }) {
+  const sel = new Set();
+  let last = null;
+  const wrap = el("div", "fgrid");
+  const msg = el("p", "hint fgrid-msg");
+
+  function render() {
+    const pairs = getPairs();
+    const outOf = new Map(pairs.map((p) => [p.in, p.out]));
+    const inOf = new Map(pairs.map((p) => [p.out, p.in]));
+    wrap.innerHTML = "";
+    wrap.append(el("h5", "fgrid-title", "Or pick on the grid"),
+      el("p", "hint", "Tap fibers on the left (Shift+tap for a run, or a tube name for the whole tube), then tap where they start on the right, or drag them across. Tap a fiber on the right to take it off."));
+    const cols = el("div", "fgrid-cols");
+    const side = (title, cable, fibersN, cls, cellFor) => {
+      const col = el("div", "fgrid-col " + cls);
+      col.append(el("div", "fgrid-head", title));
+      const code = colorCode(fibersN);
+      for (let t = 1; t <= tubeCount(fibersN); t++) {
+        const tc = colorAt(t - 1);
+        const block = tintTube(el("div", "fgrid-tube"), tubeCount(fibersN) > 1 ? tc : null);
+        const th = el(cls === "in" ? "button" : "div", "fgrid-tube-head");
+        th.append(swatch(tc, true), document.createTextNode(` Tube ${t} · ${tc.name}`));
+        if (cls === "in") {
+          th.type = "button";
+          th.title = "Select the free fibers in this tube";
+          th.addEventListener("click", () => {
+            const nums = code.filter((f) => f.tube === t && !taken.has(f.number)).map((f) => f.number);
+            const all = nums.every((n) => sel.has(n));
+            for (const n of nums) all ? sel.delete(n) : sel.add(n);
+            render();
+          });
+        }
+        const cells = el("div", "fgrid-cells");
+        for (const f of code.filter((x) => x.tube === t)) cells.append(cellFor(f));
+        block.append(th, cells);
+        col.append(block);
+      }
+      return col;
+    };
+    const cell = (f, side, state, sub) => {
+      const b = el("button", `fcell ${side}` + (state ? " " + state : ""));
+      b.type = "button";
+      b.dataset.n = f.number;
+      b.dataset.side = side;
+      const dot = swatch(f.fiberColor, true);
+      b.append(el("span", "fnum mono", String(f.number)), dot);
+      if (sub) b.append(el("span", "fsub mono", sub));
+      b.title = `${f.tubeColor.name} tube, ${f.fiberColor.name}` + (sub ? ` (${sub})` : "");
+      return b;
+    };
+    cols.append(
+      side(`${inCable.name} · in`, inCable, inCable.fibers, "in", (f) => {
+        const t = taken.get(f.number);
+        const b = cell(f, "in", t ? "used" : [outOf.has(f.number) ? "on" : "", sel.has(f.number) ? "sel" : ""].filter(Boolean).join(" "),
+          outOf.has(f.number) ? `→${outOf.get(f.number)}` : "");
+        if (t) {
+          b.disabled = true;
+          b.title += ` · already ${t}`;
+        }
+        return b;
+      }),
+      side(`${outName} · out`, null, outFibers, "out", (f) => cell(f, "out", inOf.has(f.number) ? "on" : "", inOf.has(f.number) ? `←${inOf.get(f.number)}` : "")),
+    );
+    const tools = el("div", "fgrid-tools");
+    tools.append(el("span", "fgrid-count", sel.size ? `${sel.size} selected` : "Nothing selected"),
+      btnEl("Put on the next free fibers", () => place(null), "btn ghost small"),
+      btnEl("Clear selection", () => {
+        sel.clear();
+        render();
+      }, "btn ghost small"));
+    wrap.append(cols, tools, msg);
+  }
+
+  // Selected incoming fibers onto the new cable from `start` (or the
+  // first free fiber), in order, skipping fibers already in use.
+  function place(start) {
+    if (!sel.size) {
+      msg.textContent = "Select fibers on the left first.";
+      return;
+    }
+    const keep = getPairs().filter((p) => !sel.has(p.in));
+    const used = new Set(keep.map((p) => p.out));
+    let n = start || 1;
+    const add = [];
+    for (const i of [...sel].sort((a, b) => a - b)) {
+      while (n <= outFibers && used.has(n)) n++;
+      if (n > outFibers) {
+        msg.textContent = `${outName} only has ${outFibers} fibers: ${sel.size - add.length} didn't fit.`;
+        return;
+      }
+      add.push({ in: i, out: n++ });
+    }
+    sel.clear();
+    setPairs([...keep, ...add]);
+  }
+
+  function tap(b, shift) {
+    const n = Number(b.dataset.n);
+    if (b.dataset.side === "in") {
+      if (shift && last !== null) {
+        for (let i = Math.min(last, n); i <= Math.max(last, n); i++) if (!taken.has(i)) sel.add(i);
+      } else sel.has(n) ? sel.delete(n) : sel.add(n);
+      last = n;
+      render();
+      return;
+    }
+    if (sel.size) return place(n);
+    // Take this fiber off the new cable.
+    const pairs = getPairs();
+    if (pairs.some((p) => p.out === n)) setPairs(pairs.filter((p) => p.out !== n));
+  }
+
+  // Drag from the left onto the right.
+  let drag = null;
+  let dragged = false;
+  wrap.addEventListener("pointerdown", (e) => {
+    const b = e.target.closest(".fcell.in");
+    if (!b || b.disabled) return;
+    drag = { b, x: e.clientX, y: e.clientY, moved: false, ghost: null, shift: e.shiftKey };
+  });
+  wrap.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 8) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      wrap.setPointerCapture(e.pointerId);
+      const n = Number(drag.b.dataset.n);
+      if (!sel.has(n)) {
+        sel.clear();
+        sel.add(n);
+      }
+      drag.ghost = el("div", "drag-ghost", `${sel.size} fiber${sel.size === 1 ? "" : "s"}`);
+      document.body.append(drag.ghost);
+    }
+    drag.ghost.style.left = e.clientX + 12 + "px";
+    drag.ghost.style.top = e.clientY + 12 + "px";
+    const pr = formPanel.getBoundingClientRect();
+    if (e.clientY > pr.bottom - 40) formPanel.scrollTop += 12;
+    if (e.clientY < pr.top + 40) formPanel.scrollTop -= 12;
+  });
+  wrap.addEventListener("pointerup", (e) => {
+    if (!drag) return;
+    const d = drag;
+    drag = null;
+    if (d.ghost) d.ghost.remove();
+    if (!d.moved) return;
+    dragged = true;
+    setTimeout(() => (dragged = false), 0);
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const target = under && under.closest(".fcell.out");
+    if (target) place(Number(target.dataset.n));
+    else render();
+  });
+  wrap.addEventListener("pointercancel", () => {
+    if (drag && drag.ghost) drag.ghost.remove();
+    drag = null;
+  });
+  // A drag ends in a click on the cell it started from; skip that one.
+  wrap.addEventListener("click", (e) => {
+    if (dragged) return;
+    const b = e.target.closest(".fcell");
+    if (!b || b.disabled) return;
+    tap(b, e.shiftKey);
+  });
+
+  render();
+  return wrap;
 }

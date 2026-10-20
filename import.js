@@ -472,7 +472,10 @@ function openAssign(fromId) {
       const fibers = Number(drop.value);
       for (const h of plan.unassigned.filter((x) => picked.has(x.id))) {
         const stop = addLocation(from.value, "nid", h.name, h.lot ? { lot: h.lot } : {});
-        if (hit) stop.ds = { splitterId: hit.s.id, port: nextFreePort(hit.s) };
+        if (hit && !countScheme().autoDs) {
+          stop.ds = { splitterId: hit.s.id, port: nextFreePort(hit.s) };
+          stop.dsManual = true;
+        }
         if (fibers) plan.cables.push({ id: makeId(), name: nextCableName("cable", true), from: from.value, to: stop.id, fibers });
       }
       plan.unassigned = plan.unassigned.filter((x) => !picked.has(x.id));

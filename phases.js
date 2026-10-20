@@ -89,6 +89,7 @@ function phaseSelect(obj) {
 
 const titleBtn = document.getElementById("project-title");
 const phasePick = document.getElementById("phase-pick");
+const fromChip = document.getElementById("from-chip");
 
 function renderHeader() {
   if (!plan) return;
@@ -102,9 +103,14 @@ function renderHeader() {
   } else {
     opts.push({ value: "all", label: "One phase" });
   }
-  opts.push({ value: "+", label: "+ Add a phase" });
+  if (!isGuest()) opts.push({ value: "+", label: "+ Add a phase" });
   phasePick.replaceChildren(...selectEl(opts).childNodes);
   phasePick.value = viewIdx() === null ? "all" : plan.phase;
+  phasePick.hidden = isGuest() && !hasPhases();
+  const from = plan.receivedFrom;
+  fromChip.hidden = !from;
+  if (from) fromChip.textContent = `From ${from.by}${from.at ? `, ${shortDate(from.at)}` : ""}`;
+  fromChip.title = authorLine();
 }
 
 phasePick.addEventListener("change", () => {
@@ -126,7 +132,15 @@ titleBtn.addEventListener("click", openProject);
 
 // Title and phase names.
 function openProject() {
+  if (isGuest()) {
+    return openForm("Project", (body, foot) => {
+      body.append(el("p", "cable-annotation", plan.title || "Untitled project"), el("p", "hint", authorLine() || "No names on this plan yet."));
+      foot.append(btnEl("Close", finish, "btn big"));
+    });
+  }
   openForm("Project", (body, foot) => {
+    const who = authorLine();
+    if (who) body.append(el("p", "hint", who + (plan.receivedFrom ? `. Received from ${plan.receivedFrom.by}.` : ".")));
     const title = inputEl("text", plan.title || "", { placeholder: "e.g. Pine Ridge FTTH" });
     body.append(fieldEl("Project title", title, "Shown at the top and on every printed sheet."));
     const names = [];
