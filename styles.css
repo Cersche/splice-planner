@@ -953,3 +953,37 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
   .title-btn { max-width: 60vw; }
 }
 @media print { .undo-bar { display: none !important; } }
+
+/* Drops fan out from the location to its homes (Brian's pick B). */
+.fan { position: relative; padding-left: 170px; }
+.fan-lines { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.fan-line { fill: none; stroke: var(--line-b); stroke-width: 2.6; stroke-linecap: round; }
+.fan-line.empty { stroke: #4a5866; stroke-dasharray: 7 6; }
+.fan-line.past { opacity: 0.45; }
+.fan-line.selected { stroke: var(--accent-2); stroke-width: 4; }
+.fan-rows { display: flex; flex-direction: column; }
+.fan-row { position: relative; display: flex; align-items: center; padding: 7px 0; }
+.fan-drop {
+  position: absolute;
+  right: calc(100% - 0px);
+  bottom: 50%;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  max-width: 120px;
+  margin-right: 8px;
+  padding: 0 2px 3px;
+  font: inherit;
+  color: var(--text);
+  white-space: nowrap;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.fan-row .stop-wrap { margin-left: 0; }
+.fan-drop .cable-name { font-size: 0.8rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.fan-drop .cable-size { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); }
+.fan-drop:hover .cable-name, .fan-row.selected .fan-drop .cable-name { color: var(--accent-2); }
+.fan-row.past .fan-drop { opacity: 0.55; }
+.fan-child::before { border-left-color: var(--line-a); }
+.fan-row.below .fan-drop { bottom: auto; top: 50%; padding: 3px 2px 0; }

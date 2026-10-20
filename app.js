@@ -351,6 +351,7 @@ function renderRoute() {
   routeModel = buildSpliceModel();
   tree.innerHTML = "";
   tree.append(branchEl(plan.points[0]));
+  drawFans();
   updateUnassignedButton();
   renderHeader();
 }
@@ -362,17 +363,91 @@ function branchEl(p) {
   if (p.type !== "nid") wrap.append(plusEl(p));
   branch.append(wrap);
   const paths = shownPaths(p.id);
+  // Homes at the end of the line fan out together; anything that carries
+  // on gets its own row.
+  const drops = paths.filter((x) => isEndHome(x));
   if (paths.length) {
     const kids = el("div", "children");
-    for (const path of paths) {
+    for (const path of paths.filter((x) => !drops.includes(x))) {
       const child = el("div", "child");
       child.append(pathEl(path, routeModel), branchEl(point(path.to)));
+      kids.append(child);
+    }
+    if (drops.length) {
+      const child = el("div", "child fan-child");
+      child.append(fanEl(drops));
       kids.append(child);
     }
     branch.append(kids);
   }
   return branch;
 }
+
+function isEndHome(path) {
+  const c = pathCable(path);
+  return point(path.to).type === "nid" && !childPaths(path.to).length && !(c && c.through);
+}
+
+// Drops to homes: curves fanning out from the location, one per home,
+// with the drop's name where it reaches the home. The curves are drawn
+// once the cards are laid out (drawFans).
+const FAN_W = 170;
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function fanEl(paths) {
+  const fan = el("div", "fan");
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "fan-lines");
+  svg.setAttribute("aria-hidden", "true");
+  const rows = el("div", "fan-rows");
+  for (const path of paths) {
+    const c = pathCable(path);
+    const row = el("div", "fan-row" + (c ? "" : " empty") + (c && phasePast(c) ? " past" : "") +
+      (path.to === openPathId ? " selected" : ""));
+    const label = el("button", "fan-drop");
+    label.type = "button";
+    label.title = `Drop to ${point(path.to).name}`;
+    label.append(el("span", "cable-name" + (c ? "" : " muted"), c ? c.name : "No drop"));
+    if (c) label.append(el("span", "cable-size", `${c.fibers}F` + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
+    label.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openPath(path.to);
+    });
+    row.append(label, branchEl(point(path.to)));
+    rows.append(row);
+  }
+  fan.append(svg, rows);
+  return fan;
+}
+
+function drawFans() {
+  for (const fan of document.querySelectorAll(".fan")) {
+    const svg = fan.querySelector(".fan-lines");
+    const box = fan.getBoundingClientRect();
+    if (!box.height) continue;
+    // Start where the location's line meets this group: its middle.
+    const y0 = box.height / 2;
+    const mid = FAN_W * 0.55;
+    svg.setAttribute("width", FAN_W);
+    svg.setAttribute("height", box.height);
+    svg.setAttribute("viewBox", `0 0 ${FAN_W} ${box.height}`);
+    svg.innerHTML = "";
+    for (const row of fan.querySelectorAll(".fan-row")) {
+      const stop = row.querySelector(".stop");
+      const r = stop.getBoundingClientRect();
+      const y = r.top + r.height / 2 - box.top;
+      // The name goes on the side of the line away from the curve.
+      row.classList.toggle("below", y > y0 + 4);
+      const line = document.createElementNS(SVG_NS, "path");
+      line.setAttribute("d", `M0,${y0} C${mid},${y0} ${mid},${y} ${FAN_W},${y}`);
+      line.setAttribute("class", "fan-line" + [...row.classList].filter((x) => x !== "fan-row").map((x) => " " + x).join(""));
+      svg.append(line);
+    }
+  }
+}
+
+window.addEventListener("resize", () => drawFans());
+if (document.fonts) document.fonts.ready.then(() => drawFans());
 
 // A location card: colored icon tile, type, name, then chips for its
 // equipment and counts.
