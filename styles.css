@@ -150,6 +150,8 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 .big-btn[data-start="other"] .icon-row svg { color: #d9b98c; background: color-mix(in srgb, #b08550 22%, var(--card)); }
 
 .open-saved { margin-top: 28px; }
+.resume-plan { margin-top: 10px; font-size: 0.9em; }
+.resume-plan span { font-weight: 600; }
 
 .other-form {
   position: relative;

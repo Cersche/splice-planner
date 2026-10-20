@@ -70,7 +70,7 @@ function closePrint() {
 registerPanel(printPanel, closePrint);
 document.getElementById("print-cancel").addEventListener("click", closePrint);
 // Inside a preview frame (like the Claude app) the browser won't print.
-const SITE_URL = "https://cersche.github.io/splice-planner/";
+const SITE_URL = "https://bkirsch-ffh.github.io/splice-planner/";
 function printBlocked() {
   try {
     return window.self !== window.top && !location.href.startsWith(SITE_URL);
