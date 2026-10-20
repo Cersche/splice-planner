@@ -42,8 +42,8 @@ function checkPlan() {
           problem(p.id, `${d.name} #${f.out} (${model.describe(f.item)}) isn't spliced to anything at ${p.name}. Add it to the fibers picked.`);
         }
         if (f.in && local) {
-          problem(p.id, `${d.name} #${f.out} is picked from ${inCable ? inCable.name : "the incoming cable"} #${f.in}, ` +
-            `but it's also needed for ${local.name}'s output to ${model.describe(f.item)}. Leave a fiber on ${d.name} unpicked for it.`);
+          warn(p.id, `${d.name} #${f.out} carries ${local.name}'s output to ${model.describe(f.item)}, so the pick from ` +
+            `${inCable ? inCable.name : "the incoming cable"} #${f.in} is skipped there.`);
         }
       }
     }

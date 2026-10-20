@@ -253,6 +253,15 @@ function openPath(toId) {
         rangesEl.append(row);
         update();
       });
+      // Splitter outputs made here win over a pick on the same fiber.
+      if (c && !c.through) {
+        const here = splittersAt(from);
+        const skipped = model.childFibers(c).filter((f) => f.in && here.some((sp) => f.item.startsWith(`port:${sp.id}:`)));
+        if (skipped.length) {
+          rangesEl.append(el("p", "hint", `Skipped: ${skipped.map((f) => `#${f.out}`).join(", ")} on ${c.name} ` +
+            `carry splitter outputs from ${from.name}, so those picks aren't spliced.`));
+        }
+      }
       rangesEl.append(btnEl("+ Add a range", () => {
         const pairs = expandPicks(ranges);
         const lastIn = Math.max(0, ...pairs.map((p) => p.in));
@@ -406,11 +415,19 @@ function suggestPicks(model, c, inCable, outFibers) {
     const pairs = model.autoPairs(c);
     if (pairs.length) return toRanges(pairs);
   }
+  // Leave the fibers already carrying splitter outputs made here.
+  const local = new Set();
+  if (c && !c.through) {
+    const here = splittersAt(point(c.from));
+    for (const [n, it] of model.assign(c).map) if (here.some((sp) => it.startsWith(`port:${sp.id}:`))) local.add(n);
+  }
   const used = new Set([...model.assign(inCable).map.keys(), ...fixedInUse(inCable.id, c && c.id).keys()]);
   if (c && !c.through) for (const p of model.autoPairs(c)) used.delete(p.in);
   const free = [];
   for (let n = 1; n <= inCable.fibers && free.length < outFibers; n++) if (!used.has(n)) free.push(n);
-  return toRanges(free.map((n, i) => ({ in: n, out: i + 1 })));
+  const outs = [];
+  for (let n = 1; n <= outFibers; n++) if (!local.has(n)) outs.push(n);
+  return toRanges(free.slice(0, outs.length).map((n, i) => ({ in: n, out: outs[i] })));
 }
 
 // Take a cable off its path, along with the rest of its run past here.
