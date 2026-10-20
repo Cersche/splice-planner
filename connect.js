@@ -188,7 +188,10 @@ function clearTarget(locId, to) {
   }
   if (kind === "split" && sub === "in") {
     const s = findEquipment(id);
-    if (s) s.f2 = null;
+    if (s) {
+      s.f2 = null;
+      s.f2Manual = true;
+    }
   }
 }
 
@@ -199,7 +202,12 @@ function clearSource(locId, from) {
   if (kind === "fiber") {
     const n = Number(sub);
     removePicksFrom(locId, n);
-    for (const s of splittersAt(point(locId))) if (s.f2 === n) s.f2 = null;
+    for (const s of splittersAt(point(locId))) {
+      if (s.f2 === n) {
+        s.f2 = null;
+        s.f2Manual = true;
+      }
+    }
   }
   if (kind === "split") {
     const item = `port:${id}:${sub}`;
@@ -221,7 +229,9 @@ function connect(locId, from, to) {
   if (fk === "fiber" && outgoing) {
     d.picks = toRanges([...expandPicks(d.picks), { in: Number(fsub), out: Number(tsub) }]);
   } else if (fk === "fiber" && tk === "split" && tsub === "in") {
-    findEquipment(tid).f2 = Number(fsub);
+    const s = findEquipment(tid);
+    s.f2 = Number(fsub);
+    s.f2Manual = true;
   } else if (fk === "split" && fsub !== "in" && fsub !== "auto" && outgoing) {
     d.pins[tsub] = `port:${from.split(":")[1]}:${fsub}`;
   } else {
@@ -392,6 +402,7 @@ function openConnections(locId) {
           row.append(x);
         }
         if (item.key.endsWith(":auto")) row.classList.add("fixed");
+        if (item.tube) tintTube(row, item.tube);
         return row;
       };
 

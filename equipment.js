@@ -14,7 +14,7 @@ function hasCards(eq) {
 }
 
 function equipmentLabel(eq) {
-  if (eq.type === "splitter") return eq.f2 ? `${eq.name} · F2 ${eq.f2}` : eq.name;
+  if (eq.type === "splitter") return eq.f2 ? `${eq.name} · ${f2Text(eq.f2)}` : eq.name;
   if (hasCards(eq)) {
     return `${eq.name} · ${eq.cards.length} ${eq.cards.length === 1 ? "card" : "cards"}, ${cardPorts(eq)} ports`;
   }
@@ -24,7 +24,7 @@ function equipmentLabel(eq) {
 
 // Short form for the chips on a location card.
 function equipmentChip(eq) {
-  if (eq.type === "splitter") return `${eq.ratio}${eq.f2 ? ` · F2 ${eq.f2}` : ""}`;
+  if (eq.type === "splitter") return `${eq.ratio}${eq.f2 ? ` · ${f2Text(eq.f2)}` : ""}`;
   if (hasCards(eq)) return `${eq.name} · ${cardPorts(eq)}p`;
   if (eq.type === "closure") return `${eq.name} · ${eq.trays * eq.slots}sp`;
   return eq.name;
@@ -67,25 +67,32 @@ function openEquipment(locId, startKind) {
         row.append(phRow);
       }
       if (eq.type === "splitter") {
-        const f2 = inputEl("number", eq.f2 || "", { min: 1, placeholder: "not set" });
-        const note = el("span", "field-hint");
-        const check = () => {
-          const n = Number(f2.value);
-          const problem = f2.value === "" ? "" : f2Problem(p, eq, n);
-          note.className = "field-hint" + (problem ? " error" : "");
-          note.textContent = f2.value === "" ? "F2 not set" : problem || f2Hint(p, n);
-          return problem;
-        };
-        f2.addEventListener("input", () => {
-          if (check()) return;
-          eq.f2 = f2.value === "" ? null : Number(f2.value);
+        // F2: the app's next free fiber (locked), or a fiber picked by hand.
+        const c = incomingCable(p.id);
+        const max = c ? c.fibers : 432;
+        const opts = [{ value: "", label: "Not set" }];
+        for (let n = 1; n <= max; n++) {
+          const problem = n === eq.f2 ? "" : f2Problem(p, eq, n);
+          opts.push({ value: n, label: f2Text(n) + (problem ? " (in use)" : ""), disabled: !!problem });
+        }
+        const sel = selectEl(opts, eq.f2 || "");
+        sel.addEventListener("change", () => {
+          eq.f2 = sel.value ? Number(sel.value) : null;
+          eq.f2Manual = true;
           savePlan();
           renderRoute();
+          renderList();
         });
-        const f2Row = el("label", "inline-field");
-        f2Row.append(el("span", "", "F2"), f2);
+        const view = el("span", "auto-val mono", eq.f2 ? f2Text(eq.f2) : "no free fiber");
+        const f2Row = el("span", "inline-field");
+        f2Row.append(el("span", "", "F2"), lockField(!eq.f2Manual, view, sel, (lock) => {
+          eq.f2Manual = !lock;
+          savePlan();
+          renderRoute();
+          renderList();
+        }, "the F2 count"));
+        const note = el("span", "field-hint", eq.f2 ? f2Hint(p, eq.f2) : "F2 not set");
         row.append(f2Row, el("span", "eq-meta mono", `DS ${usedPorts(eq).size}/${splitterPorts(eq)}`), note);
-        check();
       }
       if (eq.type === "closure") {
         const trays = inputEl("number", eq.trays, { min: 1, max: 48 });
@@ -109,9 +116,13 @@ function openEquipment(locId, startKind) {
       if (eq.type === "closure") actions.append(btnEl("Open splice case", () => openConnections(locId), "btn ghost"));
       actions.append(btnEl("Remove", () => {
         const onIt = plan.points.filter((h) => h.ds && h.ds.splitterId === eq.id);
-        withUndo(`Removed ${eq.name}` + (onIt.length ? ` and the DS counts of ${onIt.length} home${onIt.length === 1 ? "" : "s"}.` : "."), () => {
+        withUndo(`Removed ${eq.name}` + (onIt.length ? `. ${onIt.length} home${onIt.length === 1 ? " is" : "s are"} back on automatic counts.` : "."), () => {
           p.equipment = p.equipment.filter((x) => x.id !== eq.id);
-          for (const h of onIt) delete h.ds;
+          for (const h of onIt) {
+            delete h.ds;
+            h.dsManual = false;
+          }
+          for (const h of plan.points) if (h.tport && h.tport.eqId === eq.id) delete h.tport;
           dropEquipmentLinks(eq.id);
         });
         renderList();
@@ -128,7 +139,7 @@ function openEquipment(locId, startKind) {
     const fields = el("div");
     const picBox = el("div", "pic-box");
     addGrid.append(fields, picBox);
-    body.append(fieldEl("Kind", kind), addGrid);
+    body.append(fieldEl("Equipment type", kind), addGrid);
 
     const template = selectEl([]);
     const name = inputEl("text", "");
@@ -137,6 +148,9 @@ function openEquipment(locId, startKind) {
     const ratio = selectEl(SPLITTER_RATIOS.map((r) => ({ value: r, label: r })), "1x32");
     const qty = inputEl("number", 1, { min: 1, max: 48 });
     const first = inputEl("number", nextFreeF2(p, { id: null }) || "", { min: 1 });
+    // New splitters take the next free F2 fibers unless unlocked.
+    let firstManual = false;
+    const firstBox = el("div");
     const note = el("p", "hint");
     const addError = el("p", "error");
     addError.hidden = true;
@@ -157,8 +171,9 @@ function openEquipment(locId, startKind) {
       }
       if (k === "splitter") {
         const g = el("div", "form-grid");
-        g.append(fieldEl("Size", ratio), fieldEl("How many", qty), fieldEl("First F2", first, "Each gets the next free fiber."));
+        g.append(fieldEl("Size", ratio), fieldEl("How many", qty), fieldEl("First F2", firstBox));
         fields.append(g);
+        renderFirst();
       } else {
         fields.append(fieldEl("Name", name));
         nameTouched = false;
@@ -167,9 +182,17 @@ function openEquipment(locId, startKind) {
       refresh();
     }
 
+    function renderFirst() {
+      firstBox.replaceChildren(lockField(!firstManual, el("span", "auto-val", "Next free fibers"), first, (lock) => {
+        firstManual = !lock;
+        renderFirst();
+        refresh();
+      }, "the first F2"));
+    }
+
     function plannedF2() {
       const n = Math.max(1, Math.min(48, Number(qty.value) || 1));
-      if (first.value === "") return { list: [], n };
+      if (!firstManual || first.value === "") return { list: [], n };
       const c = incomingCable(p.id);
       const max = c ? cableStart(c).fibers : Infinity;
       const list = [];
@@ -191,8 +214,9 @@ function openEquipment(locId, startKind) {
         const planned = plannedF2();
         note.className = planned.error ? "error" : "hint";
         note.textContent = planned.error ? planned.error : planned.list.length
-          ? `Adds ${planned.n} x ${ratio.value} on F2 ${planned.list.join(", ")}.`
-          : `Adds ${planned.n} x ${ratio.value} with no F2 yet.`;
+          ? `Adds ${planned.n} x ${ratio.value} on ${planned.list.map(f2Text).join(", ")}.`
+          : firstManual ? `Adds ${planned.n} x ${ratio.value} with no F2 yet.`
+            : `Adds ${planned.n} x ${ratio.value}. Their F2 counts fill in by themselves.`;
       } else if (k === "other") {
         note.textContent = "";
       } else {
@@ -213,7 +237,7 @@ function openEquipment(locId, startKind) {
         let n = splittersAt(p).length;
         for (let i = 0; i < planned.n; i++) {
           p.equipment.push({ id: makeId(), type: "splitter", ratio: ratio.value, style: t.style,
-            name: `Splitter ${++n} (${ratio.value})`, f2: planned.list[i] || null });
+            name: `Splitter ${++n} (${ratio.value})`, f2: planned.list[i] || null, f2Manual: firstManual });
         }
         first.value = nextFreeF2(p, { id: null }) || "";
       } else if (k === "other") {

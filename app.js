@@ -20,6 +20,9 @@ function newPlan(startPoint) {
     unassigned: [],
     // Patches between equipment ports and fibers at a location.
     xconnects: [],
+    // Count scheme (counts.js); empty means the defaults.
+    counts: {},
+    createdBy: currentUser(),
   };
 }
 
@@ -29,6 +32,7 @@ function migratePlan(p) {
   if (!Array.isArray(p.paths)) p.paths = (p.cables || []).map((c) => ({ id: makeId(), from: c.from, to: c.to }));
   p.unassigned = p.unassigned || [];
   p.xconnects = p.xconnects || [];
+  if (typeof migrateCounts === "function") migrateCounts(p);
   return p;
 }
 
@@ -46,7 +50,11 @@ function loadPlan() {
 }
 
 function savePlan() {
-  if (plan && typeof tagPhases === "function") tagPhases();
+  if (plan) {
+    tagPhases();
+    autoCounts();
+    stampEdit();
+  }
   try {
     if (plan) localStorage.setItem(STORAGE_KEY, JSON.stringify(plan));
     else localStorage.removeItem(STORAGE_KEY);
@@ -66,11 +74,8 @@ function show(name) {
   for (const [key, el] of Object.entries(screens)) el.hidden = key !== name;
   if (name === "route") {
     renderRoute();
-    // Big routes center the start beside its branches; bring it into view.
-    requestAnimationFrame(() => {
-      const start = document.querySelector("#route-tree .stop.start");
-      if (start) start.scrollIntoView({ block: "center", inline: "nearest" });
-    });
+    // A fresh view: the whole route if it fits readably, else the start.
+    requestAnimationFrame(() => startView());
   }
 }
 
@@ -132,7 +137,9 @@ document.getElementById("other-cancel").addEventListener("click", cancelOther);
 otherForm.prepend(xButton(cancelOther));
 
 function startRoute({ type, label }) {
+  if (guestBlocked()) return;
   plan = newPlan({ id: makeId(), type, label, name: label, equipment: [] });
+  resetEditBaseline();
   savePlan();
   show("route");
 }
@@ -192,6 +199,18 @@ function swatch(color, small) {
   if (color.striped) el.style.setProperty("--stripe", color.stripeHex);
   el.title = color.name;
   return el;
+}
+
+// A faint wash of a buffer tube's color behind its fibers' rows, with a
+// stronger edge. White and black tubes get a neutral light or dark wash.
+function tintTube(e, tubeColor) {
+  if (!tubeColor) return e;
+  const base = tubeColor.name.split("/")[0];
+  e.classList.add("tube-tint");
+  if (base === "White") e.classList.add("tube-white");
+  else if (base === "Black") e.classList.add("tube-black");
+  else e.style.setProperty("--tube", tubeColor.hex);
+  return e;
 }
 
 // --- Route ---
@@ -349,9 +368,13 @@ let routeModel = null;
 
 function renderRoute() {
   routeModel = buildSpliceModel();
+  // Keep the card being worked on where it was on screen.
+  const anchor = rememberAnchor();
   tree.innerHTML = "";
   tree.append(branchEl(plan.points[0]));
+  restoreAnchor(anchor);
   drawFans();
+  scheduleMinimap();
   updateUnassignedButton();
   renderHeader();
 }
@@ -421,10 +444,13 @@ function fanEl(paths) {
 }
 
 function drawFans() {
-  for (const fan of document.querySelectorAll(".fan")) {
+  // Screen sizes are zoomed; the drawing is in the route's own units.
+  const z = typeof routeZoom === "function" ? routeZoom() : 1;
+  for (const fan of document.querySelectorAll("#route-tree .fan")) {
     const svg = fan.querySelector(".fan-lines");
-    const box = fan.getBoundingClientRect();
-    if (!box.height) continue;
+    const rect = fan.getBoundingClientRect();
+    if (!rect.height) continue;
+    const box = { top: rect.top, height: rect.height / z };
     // Start where the location's line meets this group: its middle.
     const y0 = box.height / 2;
     const mid = FAN_W * 0.55;
@@ -435,7 +461,7 @@ function drawFans() {
     for (const row of fan.querySelectorAll(".fan-row")) {
       const stop = row.querySelector(".stop");
       const r = stop.getBoundingClientRect();
-      const y = r.top + r.height / 2 - box.top;
+      const y = (r.top + r.height / 2 - box.top) / z;
       // The name goes on the side of the line away from the curve.
       row.classList.toggle("below", y > y0 + 4);
       const line = document.createElementNS(SVG_NS, "path");
@@ -457,6 +483,7 @@ function stopEl(p) {
   const card = el("button", "stop" + (isStart ? " start" : "") + (p.type === "nid" ? " nid" : "") +
     (p.id === selectedId ? " selected" : "") + (phasePast(p) ? " past" : ""));
   card.type = "button";
+  card.dataset.id = p.id;
   card.style.setProperty("--c", meta.color);
   const badge = el("span", "badge");
   badge.append(iconEl(meta.icon));
@@ -469,8 +496,8 @@ function stopEl(p) {
   for (const eq of p.equipment || []) chips.append(el("span", "chip", equipmentChip(eq)));
   if (p.type === "nid") {
     const f2 = homeF2(p);
-    if (f2) chips.append(countChip(`F2 ${f2.f2}`));
-    if (p.ds && homeSplitter(p)) chips.append(countChip(`DS ${p.ds.port}`));
+    if (f2) chips.append(countChip(f2Text(f2.f2)));
+    if (homeDs(p)) chips.append(countChip(homeDs(p)));
   }
   for (const c of childCables(p.id).filter((x) => x.through)) {
     chips.append(el("span", "chip through", `${c.name} ${THROUGH_LABELS[c.through]}`));
@@ -539,6 +566,17 @@ function openMenu(id, e) {
   const isStart = id === plan.points[0].id;
   const items = [];
   const homesHere = () => feedsHomes(p);
+  const by = p.addedBy ? ` · added by ${p.addedBy}` : "";
+  if (isGuest()) {
+    // Guests look: splice sheets, and a pointer to the name picker.
+    if (p.type !== "nid") items.push({ icon: "sheet", label: "Splice sheet", run: () => openSpliceSheet(id) });
+    items.push({ icon: "user", label: "View only: pick your name at the top to change things", run: () => {
+      const pick = document.querySelector(".route-header [data-user-pick]");
+      if (pick) pick.focus();
+    } });
+    openPopup(p.name, items, e, typeLabel(p.type) + by);
+    return renderRoute();
+  }
   if (p.type === "nid") {
     items.push({ icon: "counts", label: "Counts (F2 / DS)", run: () => openCounts(id) });
     items.push({ icon: "edit", label: "Address / lot", run: () => renameStop(id) });
@@ -546,7 +584,7 @@ function openMenu(id, e) {
     const eqLabel = p.type === "headend" ? "OLT shelves and panels" : p.type === "fdh" ? "Splitter modules and panels" : "Equipment";
     items.push({ icon: p.type === "fdh" ? "splitter" : "shelf", label: eqLabel, run: () => openEquipment(id) });
     items.push({ icon: "xconnect", label: "Connections and patching", run: () => openConnections(id) });
-    if (homesHere()) items.push({ icon: "homes", label: "Home counts (F2 / DS)", run: () => openBatchCounts(id) });
+    if (homesHere()) items.push({ icon: "homes", label: "Home counts (F2 / DS)", run: () => openHomeCounts(id) });
     items.push({ icon: "info", label: "Cabinet details", run: () => openDetails(id) });
     items.push({ icon: "sheet", label: "Splice sheet", run: () => openSpliceSheet(id) });
     items.push({ icon: "edit", label: "Rename", run: () => renameStop(id) });
@@ -558,7 +596,7 @@ function openMenu(id, e) {
       items.push({ icon: "xconnect", label: "Splices and connections", run: () => openConnections(id) });
     }
     items.push({ icon: "splitter", label: "Equipment (case, splitters, terminals)", run: () => openEquipment(id) });
-    if (homesHere()) items.push({ icon: "homes", label: "Home counts (F2 / DS)", run: () => openBatchCounts(id) });
+    if (homesHere()) items.push({ icon: "homes", label: "Home counts (F2 / DS)", run: () => openHomeCounts(id) });
     items.push({ icon: "info", label: "Details", run: () => openDetails(id) });
     items.push({ icon: "sheet", label: "Splice sheet", run: () => openSpliceSheet(id) });
     items.push({ icon: "edit", label: "Rename", run: () => renameStop(id) });
@@ -569,13 +607,14 @@ function openMenu(id, e) {
     items.push({ icon: "move", label: "Move (feed from somewhere else)", run: () => openMove(id) });
     items.push({ icon: "remove", label: "Remove", danger: true, run: () => removeStop(id) });
   }
-  openPopup(p.name, items, e, typeLabel(p.type));
+  openPopup(p.name, items, e, typeLabel(p.type) + by);
   renderRoute();
 }
 
 // The + menu: add the next location after this one.
 function openAddMenu(fromId, e) {
   e.stopPropagation();
+  if (guestBlocked()) return;
   closePanels();
   selectedId = fromId;
   const items = ADD_TYPES.map((t) => ({ icon: LOC_META[t].icon, label: typeLabel(t), run: () => {
@@ -750,4 +789,12 @@ function removeStop(id) {
 // Resume an in-progress plan, otherwise show the splash. Waits for the
 // other scripts, which the route drawing uses.
 if ("scrollRestoration" in history) history.scrollRestoration = "manual";
-document.addEventListener("DOMContentLoaded", () => show(plan ? "route" : "splash"));
+document.addEventListener("DOMContentLoaded", () => {
+  if (plan) {
+    migrateCounts(plan);
+    autoCounts();
+    stampEdit();
+  }
+  applyUser();
+  show(plan ? "route" : "splash");
+});

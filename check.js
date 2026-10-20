@@ -198,7 +198,7 @@ function openCheck() {
       selectedId = f.where;
       renderRoute();
       const el = document.querySelector(".stop.selected");
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      if (el) centerOn(el);
     });
     li.append(b);
     list.append(li);
