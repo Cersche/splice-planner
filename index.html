@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Splice Planner</title>
+  <title>Splice Planner · Fiber Fast Homes</title>
   <meta name="theme-color" content="#11171e">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png">
@@ -13,6 +13,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="styles.css">
+  <!-- The printouts carry the dark-text logo; load it ahead so it is there when printing. -->
+  <link rel="preload" as="image" href="assets/logo.png">
 </head>
 <body>
   <!-- Icons, as Brian picked them (2026-10-20): field drawings, the manhole as a plan symbol, the splice case solid. 48x48 grid, 2.6 stroke. -->
@@ -47,10 +49,14 @@
     </defs>
   </svg>
   <main id="app">
+    <!-- "Welcome back, Brian": shown when someone picks their name (users.js) -->
+    <div id="welcome-toast" class="welcome-toast" role="status" hidden></div>
     <!-- Splash: choose where the route begins -->
     <section id="screen-splash" class="screen">
       <label class="user-row"><svg class="ic"><use href="#i-user"/></svg> Working as <select data-user-pick aria-label="Who is working"></select></label>
-      <h1>Welcome!</h1>
+      <img class="splash-logo" src="assets/logo-light.png" alt="Fiber Fast Homes" width="600" height="418">
+      <p class="app-name">Splice Planner</p>
+      <h1 id="welcome-title">Welcome!</h1>
       <p class="subtitle">Choose starting location</p>
       <p class="hint guest-only">Guests can open and print plans. Pick your name above to start a new one.</p>
 
@@ -102,6 +108,7 @@
     <!-- Route: point-to-point tree that reads left to right -->
     <section id="screen-route" class="screen" hidden>
       <header class="route-header">
+        <span class="brand" title="Fiber Fast Homes · Splice Planner"><img src="assets/mark.png" alt="Fiber Fast Homes" width="193" height="192"></span>
         <button class="btn ghost edit-only" id="back-to-splash">&larr; Start over</button>
         <button type="button" class="title-btn" id="project-title" title="Project title and phases"></button>
         <select id="phase-pick" class="phase-pick" aria-label="Phase"></select>
@@ -133,14 +140,6 @@
 
       <!-- Popup menu on a location, or on its + button. Built in app.js. -->
       <div id="context-menu" class="context-menu" hidden></div>
-
-      <!-- General form dialog. Built in ui.js. -->
-      <div id="form-panel" class="wizard" hidden>
-        <h3 id="form-title"></h3>
-        <div id="form-body"></div>
-        <p class="error" id="form-error" hidden></p>
-        <div class="row" id="form-foot"></div>
-      </div>
 
       <!-- Import homes: CSV address list, cleaned up step by step -->
       <div id="import-panel" class="wizard" hidden>
@@ -242,6 +241,15 @@
       </div>
 
     </section>
+
+    <!-- General form dialog. Built in ui.js. -->
+    <div id="form-panel" class="wizard" hidden>
+      <h3 id="form-title"></h3>
+      <div id="form-body"></div>
+      <p class="error" id="form-error" hidden></p>
+      <div class="row" id="form-foot"></div>
+    </div>
+    <!-- (Outside the screens so "Add a name" works from the start screen too.) -->
   </main>
 
   <input type="file" id="open-plan-file" accept=".ffhspl,.json,application/json" hidden>

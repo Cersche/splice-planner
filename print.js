@@ -104,6 +104,16 @@ function blanks() {
   return fields;
 }
 
+// Fiber Fast Homes logo for the title block on every sheet (the
+// original, dark-text version: prints are white).
+function brandEl(cls = "") {
+  const img = document.createElement("img");
+  img.className = "sheet-logo" + (cls ? " " + cls : "");
+  img.src = "assets/logo.png";
+  img.alt = "Fiber Fast Homes";
+  return img;
+}
+
 function printedLine() {
   return `Printed ${new Date().toLocaleDateString()}${isGuest() ? "" : ` by ${currentUser()}`}`;
 }
@@ -131,7 +141,7 @@ function buildSheet() {
     const who = authorLine();
     if (who) title.append(el("div", "sheet-detail", who));
     for (const line of detailLines(start)) title.append(el("div", "sheet-detail", line));
-    head.append(title, blanks(), el("div", "sheet-printed", printedLine()));
+    head.append(brandEl(), title, blanks(), el("div", "sheet-printed", printedLine()));
     const diagram = el("div", "sheet-diagram");
     page.append(head, problemsBlock(), diagram);
     if (locs.length) title.append(el("div", "sheet-detail", `${locs.length} splice location page${locs.length === 1 ? "" : "s"} follow: the black "Page" tag on each card.`));
@@ -165,7 +175,7 @@ function buildSheet() {
   if (parts.summary) {
     const page = el("section", "print-page summary-page");
     const head = el("header", "sheet-head small");
-    head.append(el("h2", "", `${plan.title || "Splice plan"}: summary`), el("div", "sheet-printed", printedLine()));
+    head.append(brandEl("small"), el("h2", "", `${plan.title || "Splice plan"}: summary`), el("div", "sheet-printed", printedLine()));
     page.append(head, detailsTable(), cableTable(model), pathTable(), splitterTable(), homesTable(), legend());
     sheet.append(page);
   }
@@ -200,7 +210,10 @@ function buildTiles(tiles, diagram, model) {
     for (let c = 0; c < cols; c++) {
       n++;
       const tile = el("section", "map-tile");
-      tile.append(el("div", "tile-label",
+      const label = el("div", "tile-label");
+      label.append(brandEl("tiny"));
+      tile.append(label);
+      label.append(el("span", "",
         `Map sheet ${n} of ${total}: row ${r + 1}, column ${c + 1}` +
         (c > 0 ? " · continues from the left" : "") + (c < cols - 1 ? " · continues right" : "") +
         (r < rows - 1 ? " · continues below" : "")));
@@ -517,7 +530,7 @@ function locationPage(model, L, n, total) {
   if (lines.length) names.append(el("div", "loc-sub", lines.join(" · ")));
   const meta = el("div", "loc-meta");
   meta.append(blanks(), el("b", "", `Location ${n} of ${total}`));
-  top.append(badge, names, meta);
+  top.append(badge, names, meta, brandEl("small"));
 
   const all = model.rowsAt(L.id);
   const rows = all.rows.filter(rowPhaseShown);
