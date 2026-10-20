@@ -123,8 +123,6 @@ function endpointGroups(locId) {
     }
     return g;
   };
-  const arriving = incomingCable(locId);
-  if (arriving) left.push(fiberGroup(cableStart(arriving), "in"));
   for (const eq of L.equipment || []) {
     if (eq.type === "splitter") {
       const outs = { title: `${eq.name} outputs`, items: [] };
@@ -140,6 +138,9 @@ function endpointGroups(locId) {
       if (eq.type !== "shelf") right.push({ ...g, items: g.items.map((x) => ({ ...x })) });
     }
   }
+  // The incoming cable goes after the splitters and ports: it can be long.
+  const arriving = incomingCable(locId);
+  if (arriving) left.push(fiberGroup(cableStart(arriving), "in"));
   for (const d of childCables(locId).filter((x) => !x.through)) right.push(fiberGroup(d, "out"));
   return { left, right };
 }

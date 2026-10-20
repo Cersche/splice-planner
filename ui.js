@@ -107,7 +107,8 @@ function openForm(title, build, wide) {
   build(formBody, formFoot);
   formPanel.hidden = false;
   formPanel.scrollTop = 0;
-  const first = formBody.querySelector("input:not([type=checkbox]), select, textarea");
+  // Only jump to a box you type in; lists of equipment or ports stay put.
+  const first = formBody.querySelector(".field-row input[type=text], .field-row textarea");
   if (first) first.focus();
 }
 

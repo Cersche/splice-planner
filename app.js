@@ -63,7 +63,14 @@ const screens = {
 
 function show(name) {
   for (const [key, el] of Object.entries(screens)) el.hidden = key !== name;
-  if (name === "route") renderRoute();
+  if (name === "route") {
+    renderRoute();
+    // Big routes center the start beside its branches; bring it into view.
+    requestAnimationFrame(() => {
+      const start = document.querySelector("#route-tree .stop.start");
+      if (start) start.scrollIntoView({ block: "center", inline: "nearest" });
+    });
+  }
 }
 
 // --- Splash ---
@@ -623,4 +630,5 @@ function removeStop(id) {
 
 // Resume an in-progress plan, otherwise show the splash. Waits for the
 // other scripts, which the route drawing uses.
+if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 document.addEventListener("DOMContentLoaded", () => show(plan ? "route" : "splash"));
