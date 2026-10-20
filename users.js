@@ -138,6 +138,7 @@ for (const s of userPicks) {
       return addUserForm();
     }
     setUser(s.value);
+    welcome(s.value);
   });
 }
 
@@ -154,14 +155,63 @@ function addUserForm() {
       writeStore(USERS_KEY, JSON.stringify(list));
       closeForm();
       setUser(n);
+      welcome(n);
     }, "Add");
   });
 }
+
+// --- Welcome ---
+// Picking your name is "logging in": a short greeting with the logo that
+// fades on its own (tap to close it sooner). First time on this device
+// it's "Welcome", after that "Welcome back".
+
+const SEEN_KEY = "splicePlanner.seen";
+const welcomeToast = document.getElementById("welcome-toast");
+let welcomeTimer = null;
+
+function welcome(name) {
+  let seen = [];
+  try {
+    seen = JSON.parse(readStore(SEEN_KEY)) || [];
+  } catch {
+    // Treat as a first visit.
+  }
+  const back = seen.includes(name);
+  if (!back && name !== GUEST) writeStore(SEEN_KEY, JSON.stringify([...seen, name]));
+  const title = name === GUEST ? "Welcome!" : `Welcome${back ? " back" : ""}, ${name}`;
+  const sub = name === GUEST ? "You're browsing as a guest: open and print plans." : "Fiber Fast Homes · Splice Planner";
+  const img = document.createElement("img");
+  img.src = "assets/mark.png";
+  img.alt = "";
+  const words = el("div", "welcome-words");
+  words.append(el("div", "welcome-title", title), el("div", "welcome-sub", sub));
+  welcomeToast.replaceChildren(img, words);
+  welcomeToast.hidden = false;
+  welcomeToast.classList.remove("leaving");
+  // Restart the entrance animation.
+  void welcomeToast.offsetWidth;
+  welcomeToast.classList.add("show");
+  clearTimeout(welcomeTimer);
+  welcomeTimer = setTimeout(hideWelcome, 3600);
+}
+
+function hideWelcome() {
+  clearTimeout(welcomeTimer);
+  welcomeToast.classList.add("leaving");
+  welcomeTimer = setTimeout(() => {
+    welcomeToast.hidden = true;
+    welcomeToast.classList.remove("show", "leaving");
+  }, 400);
+}
+
+welcomeToast.addEventListener("click", hideWelcome);
 
 // Guests see the plan but none of the ways to change it.
 function applyUser() {
   document.body.classList.toggle("guest", isGuest());
   renderUserPicks();
+  const title = document.getElementById("welcome-title");
+  if (title) title.textContent = isGuest() ? "Welcome!" : `Welcome, ${currentUser()}!`;
   if (typeof plan !== "undefined" && plan && !screens.route.hidden) {
     closePanels();
     closeMenu();

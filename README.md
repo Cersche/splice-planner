@@ -1,6 +1,8 @@
-# Splice Planner
+# Splice Planner · Fiber Fast Homes
 
-Plan fiber splice routes and print 11x17 field sheets. It runs in any web
+Plan fiber splice routes and print 11x17 field sheets, branded for Fiber
+Fast Homes (logo files in `assets/`: `logo.png` for prints, `logo-light.png`
+and `mark.png` for the dark screens). It runs in any web
 browser: nothing to install, no account, and it keeps working with no signal.
 
 ## Opening the app
