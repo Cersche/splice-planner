@@ -307,19 +307,81 @@ function spliceTable(model, locId) {
 
 const splicePanel = document.getElementById("splice-panel");
 
+// The sheet for one location, for a crew standing at it: the splice list
+// (tick off as you go) or the same drawing as its printed page, and a
+// button to print just this location's page.
+const SPLICE_VIEW_KEY = "splicePlanner.spliceView";
+let spliceLocId = null;
+
+function spliceView() {
+  try {
+    return localStorage.getItem(SPLICE_VIEW_KEY) === "list" ? "list" : "drawing";
+  } catch {
+    return "drawing";
+  }
+}
+
 function openSpliceSheet(locId) {
   closePanels();
+  closeMenu();
   selectedId = locId;
-  const model = buildSpliceModel();
-  document.getElementById("splice-title").textContent = `Splice sheet: ${point(locId).name}`;
-  const body = document.getElementById("splice-body");
-  body.innerHTML = "";
-  const t = spliceTable(model, locId);
-  if (!t.childNodes.length) body.textContent = "Nothing is spliced here yet.";
-  else body.append(t);
+  spliceLocId = locId;
+  const L = point(locId);
+  document.getElementById("splice-title").textContent = `Splice sheet: ${L.name}`;
+  document.getElementById("splice-print-blocked").hidden = true;
+  renderSpliceBody();
   splicePanel.hidden = false;
+  splicePanel.scrollTop = 0;
   renderRoute();
 }
+
+function renderSpliceBody() {
+  const model = buildSpliceModel();
+  const view = spliceView();
+  for (const b of document.querySelectorAll("[data-splice-view]")) {
+    b.setAttribute("aria-selected", String(b.dataset.spliceView === view));
+  }
+  const body = document.getElementById("splice-body");
+  body.innerHTML = "";
+  const all = model.rowsAt(spliceLocId);
+  const empty = !all.rows.some(rowPhaseShown) && !all.through.length && !crossConnectsAt(spliceLocId).some(phaseShown);
+  if (empty) {
+    body.textContent = "Nothing is spliced here yet.";
+    return;
+  }
+  if (view === "drawing") {
+    // The printed page's drawing, black on white, scaled to the screen.
+    const L = point(spliceLocId);
+    const rows = all.rows.filter(rowPhaseShown);
+    rows.forEach((r, i) => (r.num = i + 1));
+    const wrap = el("div", "print-sheet sheet-preview");
+    const pic = el("div", "loc-pic");
+    pic.append(bigPicture(L, rows));
+    wrap.append(pic, checklist(L, rows));
+    body.append(wrap);
+    return;
+  }
+  body.append(spliceTable(model, spliceLocId));
+}
+
+for (const b of document.querySelectorAll("[data-splice-view]")) {
+  b.addEventListener("click", () => {
+    try {
+      localStorage.setItem(SPLICE_VIEW_KEY, b.dataset.spliceView);
+    } catch {
+      // Not remembered; the view still switches.
+    }
+    renderSpliceBody();
+  });
+}
+
+document.getElementById("splice-print").addEventListener("click", () => {
+  if (printBlocked()) {
+    document.getElementById("splice-print-blocked").hidden = false;
+    return;
+  }
+  printLocation(spliceLocId);
+});
 
 function closeSplice() {
   splicePanel.hidden = true;

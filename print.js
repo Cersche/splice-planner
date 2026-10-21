@@ -40,6 +40,7 @@ document.getElementById("print-plan").addEventListener("click", (e) => {
 const partBoxes = document.querySelectorAll("[data-print-part]");
 
 function renderPrintParts() {
+  printOnly = null;
   const parts = printParts();
   for (const b of partBoxes) b.checked = !!parts[b.dataset.printPart];
   buildSheet();
@@ -84,13 +85,32 @@ document.getElementById("print-go").addEventListener("click", () => {
     document.getElementById("print-blocked").hidden = false;
     return;
   }
+  printOnly = null;
   buildSheet();
   window.print();
 });
 
+// Print just one page instead of the whole job: a location's page for a
+// crew at that stop (splices.js), or the estimate (estimate.js). `page`
+// builds it from the splice model.
+let printOnly = null;
+
+function printJust(page) {
+  printOnly = page;
+  buildSheet();
+  window.print();
+}
+
+function printLocation(locId) {
+  printJust((model) => locationPage(model, point(locId), 1, 1));
+}
+
 // Ctrl+P should give the same sheets.
 window.addEventListener("beforeprint", () => {
   if (plan) buildSheet();
+});
+window.addEventListener("afterprint", () => {
+  printOnly = null;
 });
 
 // Job #, Tech and Date blanks the crew fills in by hand.
@@ -120,8 +140,12 @@ function printedLine() {
 
 function buildSheet() {
   sheet.innerHTML = "";
-  const parts = printParts();
   const model = buildSpliceModel();
+  if (printOnly) {
+    sheet.append(printOnly(model));
+    return;
+  }
+  const parts = printParts();
   // Places where a cable only passes through show on the overview, not
   // on a page of their own.
   const locs = parts.locations ? spliceLocations(model).filter((p) =>

@@ -148,21 +148,39 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 .big-btn[data-start="cabinet"] .icon-row svg:first-child { color: #7fb0f0; background: color-mix(in srgb, #3f7fd9 24%, var(--card)); }
 .big-btn[data-start="cabinet"] .icon-row svg:last-child { color: #7ccbdc; background: color-mix(in srgb, #2a9bb5 24%, var(--card)); }
 .big-btn[data-start="other"] .icon-row svg { color: #d9b98c; background: color-mix(in srgb, #b08550 22%, var(--card)); }
+/* Narrow screens: the four "Other" icons stack 2x2 so they stay inside the card. */
+@media (max-width: 640px) {
+  .big-btn { min-width: 0; padding: 24px 10px; }
+  .start-buttons { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .big-btn[data-start="other"] .icon-row { display: grid; grid-template-columns: repeat(2, auto); justify-content: center; }
+  .icon-row svg.ic { width: 46px; height: 46px; padding: 8px; }
+}
 
 .open-saved { margin-top: 28px; }
 .resume-plan { margin-top: 10px; font-size: 0.9em; }
 .resume-plan span { font-weight: 600; }
 
+/* The start forms open as a dialog in the middle of the screen over a
+   dimmed splash, so on a phone or tablet they never land on top of the
+   buttons underneath. */
 .other-form {
-  position: relative;
-  margin: 28px auto 0;
-  max-width: 440px;
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 24px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  margin: 0;
   text-align: left;
   background: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-2);
   border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
   padding: 20px;
 }
+.other-form label:first-of-type { padding-right: 44px; }
 .other-form label { display: block; font-weight: 600; margin: 4px 0 8px; }
 .other-form input { width: 100%; }
 .big-select { width: 100%; font-size: 1.05rem; padding: 11px; margin-bottom: 12px; }
@@ -439,7 +457,7 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 }
 .wizard.wide { width: min(1100px, calc(100vw - 24px)); }
 .wizard h3 { margin: 0 0 16px; padding-right: 48px; font-size: 1.3rem; font-weight: 600; }
-.screen:has(.wizard:not([hidden]))::before, #app:has(> .wizard:not([hidden]))::before {
+.screen:has(.wizard:not([hidden]))::before, #app:has(> .wizard:not([hidden]))::before, #screen-splash:has(.other-form:not([hidden]))::before {
   content: "";
   position: fixed;
   inset: 0;
@@ -1361,7 +1379,8 @@ body:has(#screen-splash:not([hidden])) {
   background: linear-gradient(180deg, var(--card-3), var(--card-2));
   box-shadow: 0 0 0 1px var(--brand), 0 12px 32px rgba(26, 163, 219, 0.18);
 }
-.other-form { box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); animation: rise 0.25s ease-out both; }
+.other-form { animation: pop-center 0.2s ease-out both; }
+@keyframes pop-center { from { opacity: 0; transform: translate(-50%, calc(-50% + 10px)); } to { opacity: 1; transform: translate(-50%, -50%); } }
 
 /* Buttons */
 .btn { transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.08s; }
@@ -1394,7 +1413,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .zoom-bar, .minimap { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
 
 /* Dialogs and menus */
-.screen:has(.wizard:not([hidden]))::before, #app:has(> .wizard:not([hidden]))::before { backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.screen:has(.wizard:not([hidden]))::before, #app:has(> .wizard:not([hidden]))::before, #screen-splash:has(.other-form:not([hidden]))::before { backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 .wizard {
   border-top: 3px solid var(--brand);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
@@ -1684,3 +1703,35 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .grid-label:hover .cable-name, .grid-label.selected .cable-name { color: var(--accent-2); }
 .zoom-btn.fit .ic { width: 14px; height: 14px; vertical-align: -2px; }
 .zoom-btn.on { background: color-mix(in srgb, var(--accent) 25%, var(--card)); color: var(--text); }
+
+/* --- Round 8: one location's sheet on screen --- */
+.seg { display: inline-flex; gap: 2px; padding: 3px; margin: -4px 0 14px; background: var(--card-2); border: 1px solid var(--border); border-radius: 10px; }
+.seg button { font: inherit; font-weight: 600; font-size: 0.92rem; padding: 7px 14px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+.seg button[aria-selected="true"] { background: var(--accent); color: #fff; }
+/* The printed page's drawing, black on white inside the dark dialog. */
+.print-sheet.sheet-preview { display: block; padding: 12px; border-radius: 10px; font-size: 0.9rem; }
+.sheet-preview .loc-pic { overflow: auto; }
+.sheet-preview .loc-pic svg.big-pic { min-width: 640px; }
+.sheet-preview .loc-check { overflow-x: auto; }
+
+/* --- Round 8: estimate --- */
+.estimate-wrap { overflow-x: auto; }
+.estimate-table { width: 100%; }
+.estimate-table input { width: 100%; min-width: 70px; padding: 6px 8px; }
+.estimate-table td:first-child input { min-width: 160px; }
+.estimate-table td:nth-child(3) input { min-width: 44px; width: 60px; }
+.estimate-table input.typed { border-color: var(--accent); }
+.estimate-table .group-row td { font-weight: 700; padding-top: 12px; color: var(--accent-2); border-bottom: 1px solid var(--border); }
+.estimate-table .num { text-align: right; white-space: nowrap; }
+.estimate-note { display: block; font-size: 0.78rem; color: var(--muted); }
+.estimate-totals { margin-top: 14px; text-align: right; }
+.estimate-total { font-size: 1.3rem; font-weight: 700; }
+.btn.tiny { padding: 2px 9px; font-size: 1.05rem; }
+.print-sheet .estimate-table .group-row td { color: #000; background: #f0f0f0; }
+.print-sheet .estimate-table .total-row td { font-weight: 700; border-top: 2px solid #000; }
+.print-sheet .estimate-page .sheet-table { max-width: 10in; }
+#splice-body { overflow-x: auto; }
+.estimate-table th:nth-child(2), .estimate-table th:nth-child(4) { width: 130px; }
+.estimate-table th:nth-child(3) { width: 60px; }
+.estimate-table th:nth-child(5) { width: 120px; }
+.estimate-table th:nth-child(6) { width: 40px; }
