@@ -97,6 +97,17 @@ you have signal and it will work offline after that.
     splice numbered in an orange bubble, a checklist keyed to the bubbles,
     and the homes it feeds), then summary tables. A full-size route map
     across several sheets is optional.
+13. **In the field**: tap the location you're standing at and pick **Splice
+    sheet** (first in its menu; a Guest goes straight to it). It shows the
+    same drawing as that location's printed page, or the splice list, and
+    **Print this location** prints just that one page.
+14. **Estimate** counts what the job takes: cable feet by size (from the
+    footage on each path), drops, conduit, locations, splice cases,
+    splitters, terminals, fusion splices, patches and drop installs. Type a
+    unit price on each line (or over any quantity), add your own lines, and
+    see the total and cost per home. Prices stay with the plan, and the last
+    ones used on a device fill in new plans. **Print estimate** or **Save
+    CSV** for a spreadsheet.
 
 Nothing asks "Are you sure?": removals happen right away with an **Undo**
 bar at the bottom. **Start over** asks for a second tap.

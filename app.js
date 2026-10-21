@@ -672,9 +672,12 @@ function openMenu(id, e) {
   const items = [];
   const homesHere = () => feedsHomes(p);
   const by = p.addedBy ? ` · added by ${p.addedBy}` : "";
+  // The splice sheet comes first: a crew at the stop taps it and has it.
+  const sheetItem = { icon: "sheet", label: "Splice sheet (view / print)", run: () => openSpliceSheet(id) };
   if (isGuest()) {
-    // Guests look: splice sheets, and a pointer to the name picker.
-    if (p.type !== "nid") items.push({ icon: "sheet", label: "Splice sheet", run: () => openSpliceSheet(id) });
+    // Guests (crews in the field) go straight to the location's sheet.
+    if (p.type !== "nid") return openSpliceSheet(id);
+    // At a home: a pointer to the name picker.
     items.push({ icon: "user", label: "View only: pick your name at the top to change things", run: () => {
       const pick = document.querySelector(".route-header [data-user-pick]");
       if (pick) pick.focus();
@@ -686,14 +689,15 @@ function openMenu(id, e) {
     items.push({ icon: "counts", label: "Counts (F2 / DS)", run: () => openCounts(id) });
     items.push({ icon: "edit", label: "Address / lot", run: () => renameStop(id) });
   } else if (isCabinet(p)) {
+    items.push(sheetItem);
     const eqLabel = p.type === "headend" ? "OLT shelves and panels" : p.type === "fdh" ? "Splitter modules and panels" : "Equipment";
     items.push({ icon: p.type === "fdh" ? "splitter" : "shelf", label: eqLabel, run: () => openEquipment(id) });
     items.push({ icon: "xconnect", label: "Connections and patching", run: () => openConnections(id) });
     if (homesHere()) items.push({ icon: "homes", label: "Home counts (F2 / DS)", run: () => openHomeCounts(id) });
     items.push({ icon: "info", label: "Cabinet details", run: () => openDetails(id) });
-    items.push({ icon: "sheet", label: "Splice sheet", run: () => openSpliceSheet(id) });
     items.push({ icon: "edit", label: "Rename", run: () => renameStop(id) });
   } else {
+    items.push(sheetItem);
     // Locations start empty: a splice case is only there once it's added.
     if (closureAt(p)) items.push({ icon: "closure", label: "Open splice case", run: () => openConnections(id) });
     else {
@@ -703,7 +707,6 @@ function openMenu(id, e) {
     items.push({ icon: "splitter", label: "Equipment (case, splitters, terminals)", run: () => openEquipment(id) });
     if (homesHere()) items.push({ icon: "homes", label: "Home counts (F2 / DS)", run: () => openHomeCounts(id) });
     items.push({ icon: "info", label: "Details", run: () => openDetails(id) });
-    items.push({ icon: "sheet", label: "Splice sheet", run: () => openSpliceSheet(id) });
     items.push({ icon: "edit", label: "Rename", run: () => renameStop(id) });
     items.push({ icon: LOC_META[p.type] ? LOC_META[p.type].icon : "pin", label: "Change location type", run: () => changeTypeForm(id) });
   }

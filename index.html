@@ -126,6 +126,7 @@
           <button class="btn ghost edit-only" id="import-homes"><svg class="ic"><use href="#i-homes"/></svg> Import homes</button>
           <button class="btn ghost" id="unassigned-homes" hidden></button>
           <button class="btn ghost" id="check-plan"><svg class="ic"><use href="#i-info"/></svg> Check plan <span id="check-badge" class="badge" hidden></span></button>
+          <button class="btn ghost" id="open-estimate" title="Materials and labor for this job, with prices"><svg class="ic"><use href="#i-counts"/></svg> Estimate</button>
           <button class="btn ghost edit-only" id="share-plan" title="Save a plan file to keep or send"><svg class="ic"><use href="#i-share"/></svg> Share plan</button>
           <button class="btn ghost" data-open-plan>Open plan</button>
         </div>
@@ -236,8 +237,17 @@
       <!-- Splice sheet for one location -->
       <div id="splice-panel" class="wizard wide" hidden>
         <h3 id="splice-title"></h3>
+        <div class="seg" id="splice-views" role="tablist" aria-label="Show">
+          <button type="button" role="tab" data-splice-view="drawing">Drawing</button>
+          <button type="button" role="tab" data-splice-view="list">Splice list</button>
+        </div>
         <div id="splice-body"></div>
+        <p class="inline-warn" id="splice-print-blocked" hidden>
+          Printing doesn't work inside this preview. Open the plan on the website to print:
+          <a href="https://bkirsche.github.io/splice-planner/" target="_blank" rel="noopener">bkirsche.github.io/splice-planner</a>
+        </p>
         <div class="row">
+          <button type="button" class="btn ghost" id="splice-print"><svg class="ic"><use href="#i-sheet"/></svg> Print this location</button>
           <button type="button" class="btn big" id="splice-close">Close</button>
         </div>
       </div>
@@ -288,6 +298,7 @@
   <script src="edits.js"></script>
   <script src="check.js"></script>
   <script src="print.js"></script>
+  <script src="estimate.js"></script>
   <script>
     // Works offline once installed. Skipped when opened straight from a file.
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
