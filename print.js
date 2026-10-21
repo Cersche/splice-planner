@@ -483,6 +483,8 @@ function legend() {
 // to the bubbles and the homes fed from here.
 
 const PIC_W = 1540;
+// Height of a splitter's box in the drawing: name, style and F2.
+const SPLIT_BOX_H = 84;
 // Tallest a location drawing gets, leaving room for the title block.
 const MAX_PIC_IN = 8.9;
 const TABLES_NEXT_SHEET_IN = 8.1;
@@ -492,7 +494,8 @@ const STRAND_GAP = 3.4;
 const LAND_GAP = 1.8;
 const INK = "#1b1f24";
 const INK_2 = "#4d5560";
-const BUBBLE = "#f08a00";
+// Deep orange, so white numbers read on it.
+const BUBBLE = "#c95500";
 const SPLIT_INK = "#2e7d4f";
 const FONT = "IBM Plex Sans, Arial, sans-serif";
 
@@ -614,7 +617,7 @@ function bigPicture(L, rows) {
   const dropRows = Math.ceil(drops.length / dropCols);
   const rightH = rightItems.reduce((h, it) => h + cableH(it.c) + 44, 0) + (drops.length ? 34 + dropRows * 22 : 0);
   const inH = inCable ? Math.max(50, Math.min(230, tubeCount(inCable.fibers) * 13 + 16)) : 60;
-  const splitH = splitters.length * 78;
+  const splitH = splitters.length * (SPLIT_BOX_H + 18);
   const H = Math.max(340, rightH + 50, splitH + 140, inH + 150);
 
   const svg = svgEl("svg", { viewBox: `0 0 ${PIC_W} ${H}`, class: "big-pic", role: "img" });
@@ -722,7 +725,7 @@ function bigPicture(L, rows) {
       homeY.set(d.id, { x, y });
       marks.append(svgEl("line", { x1: x, y1: y, x2: x + 26, y2: y, stroke: INK, "stroke-width": 2.5 }));
       const t = text(x + 32, y + 5, "", { "font-size": 14.5 });
-      t.append(svgEl("tspan", { "font-weight": 700 }, h.name), svgEl("tspan", { fill: INK_2 }, [homeDs(h), d.name].filter(Boolean).map((s) => `  ·  ${s}`).join("")));
+      t.append(svgEl("tspan", { "font-weight": 700 }, h.name), svgEl("tspan", { fill: INK_2 }, [homeF2(h) && `F2 ${f2CellFor(homeF2(h))}`, homeDs(h), d.name].filter(Boolean).map((s) => `  ·  ${s}`).join("")));
       marks.append(t);
     });
   }
@@ -734,9 +737,9 @@ function bigPicture(L, rows) {
 
   // --- Splitters: each sits level with what it feeds, so its outputs run
   // straight across instead of through the other splices ---
-  const SX0 = 700;
-  const SX1 = 830;
-  const SPLIT_STEP = 78;
+  const SX0 = 640;
+  const SX1 = 900;
+  const SPLIT_STEP = SPLIT_BOX_H + 18;
   const splitY = new Map();
   const splitBoxes = [];
   const splitG = svgEl("g");
@@ -757,20 +760,25 @@ function bigPicture(L, rows) {
     const bottom = H - 50;
     let prev = -Infinity;
     for (const w of want) {
-      w.top = Math.max(top, w.y - 30, prev + SPLIT_STEP);
+      w.top = Math.max(top, w.y - SPLIT_BOX_H / 2, prev + SPLIT_STEP);
       prev = w.top;
     }
     let next = Infinity;
     for (let i = want.length - 1; i >= 0; i--) {
-      want[i].top = Math.min(want[i].top, bottom - 60, next - SPLIT_STEP);
+      want[i].top = Math.min(want[i].top, bottom - SPLIT_BOX_H, next - SPLIT_STEP);
       next = want[i].top;
     }
     for (const { s, top: y } of want) {
-      splitY.set(s.id, y + 30);
-      splitBoxes.push({ x0: SX0, y0: y, x1: SX1, y1: y + 60 });
-      splitG.append(svgEl("rect", { x: SX0, y, width: SX1 - SX0, height: 60, rx: 10, fill: "#eef6f0", stroke: SPLIT_INK, "stroke-width": 3 }));
-      splitG.append(text((SX0 + SX1) / 2, y + 26, s.ratio, { "text-anchor": "middle", "font-weight": 800, "font-size": 18, fill: SPLIT_INK }));
-      splitG.append(text((SX0 + SX1) / 2, y + 46, f2Label(s), { "text-anchor": "middle", "font-size": 13, fill: SPLIT_INK }));
+      // Its name, ratio, style and F2, as the crew will find it.
+      splitY.set(s.id, y + SPLIT_BOX_H / 2);
+      splitBoxes.push({ x0: SX0, y0: y, x1: SX1, y1: y + SPLIT_BOX_H });
+      const mid = (SX0 + SX1) / 2;
+      const name = s.name && !s.name.includes(s.ratio) ? `${s.name} · ${s.ratio}` : s.name || s.ratio;
+      const style = s.style && s.style.length > 40 ? s.style.slice(0, 39) + "…" : s.style;
+      splitG.append(svgEl("rect", { x: SX0, y, width: SX1 - SX0, height: SPLIT_BOX_H, rx: 10, fill: "#eef6f0", stroke: SPLIT_INK, "stroke-width": 3 }));
+      splitG.append(text(mid, y + 25, name, { "text-anchor": "middle", "font-weight": 800, "font-size": 17, fill: SPLIT_INK }));
+      if (style) splitG.append(text(mid, y + 46, style, { "text-anchor": "middle", "font-size": 12.5, fill: SPLIT_INK }));
+      splitG.append(text(mid, y + (style ? 68 : 50), f2Label(s), { "text-anchor": "middle", "font-weight": 700, "font-size": 14, fill: SPLIT_INK }));
     }
   }
 
@@ -858,13 +866,13 @@ function bigPicture(L, rows) {
   const hits = (box, q) => q.x > box.x0 && q.x < box.x1 && q.y > box.y0 && q.y < box.y1;
   const overlap = (p, q) => Math.max(0, Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0)) * Math.max(0, Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0));
   placed.forEach((it, gi) => {
-    const w = bubbleW(it.label) + 8;
+    const w = bubbleW(it.label) + 22;
     const want = it.g.drop ? 0.3 : spots[gi % spots.length];
     let best = null;
     for (let k = 6; k <= 54; k++) {
       const t = k / 60;
       const at = it.pts[k];
-      const box = { x0: at.x - w / 2, y0: at.y - 19, x1: at.x + w / 2, y1: at.y + 19 };
+      const box = { x0: at.x - w / 2, y0: at.y - 24, x1: at.x + w / 2, y1: at.y + 24 };
       let cost = Math.abs(t - want);
       // Keep bubbles inside the case, clear of its walls.
       if (box.x0 < CX0 + 6 || box.x1 > CX1 - 6) cost += 2;
@@ -904,15 +912,16 @@ function bezierAt(a, b, t) {
 }
 
 function bubbleW(label) {
-  return Math.max(30, label.length * 9 + 14);
+  return Math.max(32, label.length * 8.6 + 22);
 }
 
 // An orange bubble (a pill when it holds a range) with the splice numbers.
 function bubble(at, label) {
   const g = svgEl("g", { class: "bubble" });
   const w = bubbleW(label);
-  g.append(svgEl("rect", { x: at.x - w / 2, y: at.y - 15, width: w, height: 30, rx: 15, fill: BUBBLE, stroke: INK, "stroke-width": 2.5 }),
-    svgEl("text", { x: at.x, y: at.y + 5.5, "text-anchor": "middle", "font-family": FONT, "font-weight": 800, "font-size": 15, fill: INK }, label));
+  g.append(svgEl("rect", { x: at.x - w / 2, y: at.y - 16, width: w, height: 32, rx: 16, fill: BUBBLE, stroke: INK, "stroke-width": 2 }),
+    svgEl("text", { x: at.x, y: at.y + 5.5, "text-anchor": "middle", "font-family": FONT, "font-weight": 700, "font-size": 15,
+      "letter-spacing": 0.6, fill: "#fff" }, label));
   return g;
 }
 
