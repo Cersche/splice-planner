@@ -490,8 +490,8 @@ const MAX_PIC_IN = 8.9;
 const TABLES_NEXT_SHEET_IN = 8.1;
 // Width given to each fiber where splices run as strands side by side.
 const STRAND_GAP = 3.4;
-// Room per strand where a bundle lands on its tube.
-const LAND_GAP = 1.8;
+// Room per fiber on a tube opened up where strands land on it.
+const FIBER_PITCH = 3.6;
 const INK = "#1b1f24";
 const INK_2 = "#4d5560";
 // Deep orange, so white numbers read on it.
@@ -595,10 +595,12 @@ function bigPicture(L, rows) {
     const base = (bundleH(c.fibers) - 12) / T;
     const land = landing.get(c.id) || new Map();
     return Array.from({ length: T }, (_, i) => {
-      const n = land.get(i + 1) || 0;
-      return n > 1 ? Math.max(base, n * LAND_GAP + 8) : base;
+      const n = fibersInTube(c, i + 1);
+      return land.get(i + 1) && n > 1 ? Math.max(base, n * FIBER_PITCH + 10) : base;
     });
   };
+  // A tube that takes strands is drawn opened up, one line per fiber.
+  const opened = (c, t) => !!(landing.get(c.id) || new Map()).get(t) && fibersInTube(c, t) > 1;
   const cableH = (c) => 12 + tubeRooms(c).reduce((a, b) => a + b, 0);
   // Cables out are stacked in the order of the tubes that feed them, so
   // the lines across the case don't cross; splitter-fed ones go last,
@@ -674,6 +676,8 @@ function bigPicture(L, rows) {
   const RX1 = PIC_W - 20;
   const outStripe = new Map(); // cable id -> (tube) -> y
   const outRoom = new Map(); // cable id -> height given to each tube
+  const fiberY = new Map(); // "cable id:fiber" -> y, on opened tubes
+  const landedOn = new Set(rows.filter((r) => r.dst.kind === "cable").map((r) => `${r.dst.id}:${r.dst.n}`));
   let ry = 52;
   const usedOut = new Map();
   for (const r of rows) {
@@ -700,6 +704,24 @@ function bigPicture(L, rows) {
       ty += rooms[t - 1];
       ys.set(t, y);
       const used = it.kind === "through" || (usedOut.get(c.id) || new Set()).has(t);
+      if (opened(c, t)) {
+        // The tube as a light band in its color, its fibers inside it in
+        // their own colors, and the fiber numbers at the far end.
+        const n = fibersInTube(c, t);
+        const top = y - (n * FIBER_PITCH) / 2;
+        const tubeInk = inkFor(colorAt(t - 1));
+        svg.append(svgEl("rect", { x: RX0 + 18, y: top - 3, width: RX1 - RX0 - 36, height: n * FIBER_PITCH + 6, rx: 6,
+          fill: tubeInk, "fill-opacity": 0.16, stroke: tubeInk, "stroke-width": 2 }));
+        for (let f = 1; f <= n; f++) {
+          const num = (t - 1) * 12 + f;
+          const fy = top + (f - 0.5) * FIBER_PITCH;
+          fiberY.set(`${c.id}:${num}`, fy);
+          svg.append(svgEl("line", { x1: RX0 + 24, y1: fy, x2: RX1 - 96, y2: fy, stroke: strandColor(num), "stroke-width": FIBER_PITCH - 1.2,
+            opacity: landedOn.has(`${c.id}:${num}`) ? 1 : 0.3 }));
+        }
+        svg.append(text(RX1 - 30, y + 5, `#${(t - 1) * 12 + 1}–${(t - 1) * 12 + n}`, { "text-anchor": "end", "font-size": 13, "font-weight": 700, fill: INK_2 }));
+        continue;
+      }
       svg.append(svgEl("rect", { x: RX0 + 22, y: y - Math.min(4, step * 0.36), width: RX1 - RX0 - 44, height: Math.min(8, step * 0.72), rx: 4,
         fill: inkFor(colorAt(t - 1)), opacity: used || T === 1 ? 1 : 0.28 }));
     }
@@ -834,9 +856,12 @@ function bigPicture(L, rows) {
       const toCable = g.dst.kind === "cable";
       const gapB = fit(toCable ? (outRoom.get(g.dst.id)?.[Math.ceil(g.dst.n / 12) - 1] || 10) * 0.8 : 40);
       const gapMid = STRAND_GAP;
+      // Each strand lands on its own fiber where the tube is opened up.
       const paths = strands.map((r, i) => {
         const k = i - (strands.length - 1) / 2;
-        return ribbonPath({ x: a.x, y: a.y + k * gapA }, { x: b.x, y: b.y + k * gapB }, k * gapMid, toCable ? RX0 + 36 : b.x);
+        const fy = toCable && fiberY.get(`${r.dst.id}:${r.dst.n}`);
+        const land = fy ? { x: b.x, y: fy } : { x: b.x, y: b.y + k * gapB };
+        return ribbonPath({ x: a.x, y: a.y + k * gapA }, land, k * gapMid, toCable ? RX0 + (fy ? 26 : 36) : b.x);
       });
       for (const d of paths) {
         lines.append(svgEl("path", { d, fill: "none", stroke: INK, opacity: 0.55, "stroke-width": STRAND_GAP + 0.9 }));
@@ -891,6 +916,10 @@ function bigPicture(L, rows) {
 function curve(a, b) {
   const dx = (b.x - a.x) * 0.45;
   return `M${a.x},${a.y} C${a.x + dx},${a.y} ${b.x - dx},${b.y} ${b.x},${b.y}`;
+}
+
+function fibersInTube(c, t) {
+  return Math.max(0, Math.min(12, c.fibers - (t - 1) * 12));
 }
 
 // One strand of a bundle: it leaves at a and arrives at b, spreading out
