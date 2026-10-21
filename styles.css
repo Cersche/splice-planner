@@ -1264,7 +1264,8 @@ body:not(.guest) .guest-only { display: none !important; }
 .loc-meta .sheet-fields { width: 100%; }
 .loc-pic { border: 2px solid #1b1f24; border-radius: 10px; overflow: hidden; background: #fbfbfa; margin-bottom: 12px; break-inside: avoid; }
 .loc-pic svg.big-pic { display: block; width: 100%; }
-.loc-bottom { display: grid; grid-template-columns: 1.25fr 1fr; gap: 22px; align-items: start; }
+.loc-bottom { display: grid; grid-template-columns: 1.25fr 1fr; gap: 22px; align-items: start; margin-right: 1px; }
+.loc-bottom.next-sheet { break-before: page; }
 .loc-bottom h3 { margin: 0 0 6px; font-size: 13pt; }
 .check-table td { vertical-align: middle; }
 .check-table td b { font-weight: 700; }

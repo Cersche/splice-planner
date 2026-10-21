@@ -483,6 +483,9 @@ function legend() {
 // to the bubbles and the homes fed from here.
 
 const PIC_W = 1540;
+// Tallest a location drawing gets, leaving room for the title block.
+const MAX_PIC_IN = 8.9;
+const TABLES_NEXT_SHEET_IN = 8.1;
 const INK = "#1b1f24";
 const INK_2 = "#4d5560";
 const BUBBLE = "#f08a00";
@@ -536,8 +539,12 @@ function locationPage(model, L, n, total) {
   const rows = all.rows.filter(rowPhaseShown);
   rows.forEach((r, i) => (r.num = i + 1));
   const pic = el("div", "loc-pic");
-  pic.append(bigPicture(L, rows));
+  const drawing = bigPicture(L, rows);
+  pic.append(drawing);
   const bottom = el("div", "loc-bottom");
+  // Under a tall drawing there's no room left for the tables, so they
+  // start on the next sheet instead of leaving their headings behind.
+  if (parseFloat(drawing.style.height) > TABLES_NEXT_SHEET_IN) bottom.classList.add("next-sheet");
   bottom.append(checklist(L, rows), homesHereTable(L));
   page.append(top, pic, bottom);
   return page;
@@ -550,10 +557,31 @@ function bigPicture(L, rows) {
   const throughs = childCables(L.id).filter((c) => c.through && phaseShown(point(c.to)));
   const drops = childCables(L.id).filter((c) => isDrop(c) && phaseShown(point(c.to)));
   const splitters = splittersAt(L).filter(phaseShown);
+  // At the start of the route a fiber patched to a splitter output is
+  // drawn from that splitter.
+  const here = new Set(splitters.map((s) => s.id));
+  const srcOf = (r) => {
+    if (r.src) return r.src;
+    const x = r.dst.kind === "cable" && crossConnectFor(r.key);
+    const [kind, id] = x ? x.other.split(":") : [];
+    return (kind === "port" || kind === "split") && here.has(id) ? { kind: "split", id } : null;
+  };
 
   // --- Sizes ---
   const bundleH = (fibers) => Math.max(34, Math.min(150, tubeCount(fibers) * 10 + 14));
-  const rightItems = [...outs.map((c) => ({ c, kind: "out" })), ...throughs.map((c) => ({ c, kind: "through" }))];
+  // Cables out are stacked in the order of the tubes that feed them, so
+  // the lines across the case don't cross; splitter-fed ones go last,
+  // next to the splitters and drops at the bottom.
+  const feedOrder = new Map();
+  for (const r of rows) {
+    if (r.dst.kind !== "cable") continue;
+    const src = srcOf(r);
+    const k = !src ? 2000 : src.kind === "split" ? 1000 : Math.ceil(src.n / 12);
+    feedOrder.set(r.dst.id, Math.min(k, feedOrder.get(r.dst.id) ?? Infinity));
+  }
+  const rightItems = [...outs.map((c) => ({ c, kind: "out" })), ...throughs.map((c) => ({ c, kind: "through" }))]
+    .map((it, i) => ({ ...it, order: feedOrder.get(it.c.id) ?? (it.kind === "through" ? 500 : 3000), i }))
+    .sort((a, b) => a.order - b.order || a.i - b.i);
   const dropCols = drops.length > 14 ? 2 : 1;
   const dropRows = Math.ceil(drops.length / dropCols);
   const rightH = rightItems.reduce((h, it) => h + bundleH(it.c.fibers) + 44, 0) + (drops.length ? 34 + dropRows * 22 : 0);
@@ -562,7 +590,16 @@ function bigPicture(L, rows) {
   const H = Math.max(340, rightH + 50, splitH + 140, inH + 150);
 
   const svg = svgEl("svg", { viewBox: `0 0 ${PIC_W} ${H}`, class: "big-pic", role: "img" });
-  svg.style.height = `${(H / PIC_W) * 16.2}in`;
+  // A very busy stop shrinks to fit under the title block: a drawing
+  // taller than the sheet can't be split, so it would start on a page of
+  // its own and get cut off.
+  const fullIn = (H / PIC_W) * 16.2;
+  const shown = Math.min(fullIn, MAX_PIC_IN);
+  svg.style.height = `${shown}in`;
+  if (shown < fullIn) {
+    svg.style.width = `${(shown / fullIn) * 16.2}in`;
+    svg.style.margin = "0 auto";
+  }
   const lines = svgEl("g");
   const marks = svgEl("g");
   const text = (x, y, t, attrs = {}) => svgEl("text", { x, y, "font-family": FONT, "font-size": 16, fill: INK, ...attrs }, t);
@@ -597,19 +634,6 @@ function bigPicture(L, rows) {
     svg.append(svgEl("rect", { x: 24, y: inTop, width: CX0 - 60, height: inH, rx: 12, fill: "#f3f3f1", stroke: INK, "stroke-width": 2, "stroke-dasharray": "8 6" }));
     svg.append(text(40, inTop + inH / 2 + 6, L.id === plan.points[0].id ? "Start of the route: feeder and equipment here" : "No cable arrives here",
       { fill: INK_2, "font-size": 16 }));
-  }
-
-  // --- Splitters ---
-  const SX0 = 700;
-  const SX1 = 830;
-  const splitY = new Map();
-  let sy = Math.max(90, H / 2 - splitH / 2 + 30);
-  for (const s of splitters) {
-    splitY.set(s.id, sy + 30);
-    svg.append(svgEl("rect", { x: SX0, y: sy, width: SX1 - SX0, height: 60, rx: 10, fill: "#eef6f0", stroke: SPLIT_INK, "stroke-width": 3 }));
-    svg.append(text((SX0 + SX1) / 2, sy + 26, s.ratio, { "text-anchor": "middle", "font-weight": 800, "font-size": 18, fill: SPLIT_INK }));
-    svg.append(text((SX0 + SX1) / 2, sy + 46, f2Label(s), { "text-anchor": "middle", "font-size": 13, fill: SPLIT_INK }));
-    sy += 78;
   }
 
   // --- Right side: cables out, cables passing through, drops ---
@@ -668,15 +692,65 @@ function bigPicture(L, rows) {
     });
   }
 
+  // At the start of the route, fibers patched to nothing run as one dashed
+  // line over the top of the splitters.
+  const STUB_Y = 84;
+  const isStub = (src, drop, dst) => !src && !inCable && !drop && dst.kind === "cable";
+
+  // --- Splitters: each sits level with what it feeds, so its outputs run
+  // straight across instead of through the other splices ---
+  const SX0 = 700;
+  const SX1 = 830;
+  const SPLIT_STEP = 78;
+  const splitY = new Map();
+  const splitBoxes = [];
+  const splitG = svgEl("g");
+  {
+    const want = splitters.map((s, i) => {
+      const ys = [];
+      for (const r of rows) {
+        const src = srcOf(r);
+        if (!src || src.kind !== "split" || src.id !== s.id) continue;
+        if (r.dst.kind === "cable" && homeY.has(r.dst.id)) ys.push(homeY.get(r.dst.id).y);
+        else if (r.dst.kind === "cable" && outStripe.has(r.dst.id)) ys.push(outStripe.get(r.dst.id).get(Math.ceil(r.dst.n / 12)) || outStripe.get(r.dst.id).get(1));
+      }
+      return { s, i, y: ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : H / 2 };
+    }).sort((a, b) => a.y - b.y || a.i - b.i);
+    // Spread them so none overlap, keeping them inside the case (and
+    // under the dashed line of unpatched fibers, if there is one).
+    const top = rows.some((r) => isStub(srcOf(r), homeY.has(r.dst.id), r.dst)) ? STUB_Y + 60 : 90;
+    const bottom = H - 50;
+    let prev = -Infinity;
+    for (const w of want) {
+      w.top = Math.max(top, w.y - 30, prev + SPLIT_STEP);
+      prev = w.top;
+    }
+    let next = Infinity;
+    for (let i = want.length - 1; i >= 0; i--) {
+      want[i].top = Math.min(want[i].top, bottom - 60, next - SPLIT_STEP);
+      next = want[i].top;
+    }
+    for (const { s, top: y } of want) {
+      splitY.set(s.id, y + 30);
+      splitBoxes.push({ x0: SX0, y0: y, x1: SX1, y1: y + 60 });
+      splitG.append(svgEl("rect", { x: SX0, y, width: SX1 - SX0, height: 60, rx: 10, fill: "#eef6f0", stroke: SPLIT_INK, "stroke-width": 3 }));
+      splitG.append(text((SX0 + SX1) / 2, y + 26, s.ratio, { "text-anchor": "middle", "font-weight": 800, "font-size": 18, fill: SPLIT_INK }));
+      splitG.append(text((SX0 + SX1) / 2, y + 46, f2Label(s), { "text-anchor": "middle", "font-size": 13, fill: SPLIT_INK }));
+    }
+  }
+
   // --- Splices: one line per group, with its bubble ---
   const groups = new Map();
   for (const r of rows) {
-    const s = r.src;
+    const s = srcOf(r);
     const srcKey = !s ? "x" : s.kind === "split" ? `s:${s.id}` : `t:${Math.ceil(s.n / 12)}`;
     const drop = r.dst.kind === "cable" && homeY.has(r.dst.id);
-    const dstKey = r.dst.kind === "split" ? `s:${r.dst.id}` : drop ? "drops" : `c:${r.dst.id}:${Math.ceil(r.dst.n / 12)}`;
+    // A splitter's line is one color whatever tube it lands in, so it
+    // runs to the cable as one line rather than one per tube.
+    const whole = !s || s.kind === "split";
+    const dstKey = r.dst.kind === "split" ? `s:${r.dst.id}` : drop ? "drops" : `c:${r.dst.id}${whole ? "" : `:${Math.ceil(r.dst.n / 12)}`}`;
     const key = `${srcKey}|${dstKey}`;
-    if (!groups.has(key)) groups.set(key, { rows: [], src: s, dst: r.dst, drop });
+    if (!groups.has(key)) groups.set(key, { rows: [], src: s, dst: r.dst, drop, whole: whole && r.dst.kind === "cable" });
     groups.get(key).rows.push(r);
   }
   const start = (s) => {
@@ -694,29 +768,52 @@ function bigPicture(L, rows) {
     if (s.kind === "split") return SPLIT_INK;
     return inkFor(colorAt(Math.ceil(s.n / 12) - 1));
   };
-  const spots = [0.5, 0.36, 0.64, 0.28, 0.72, 0.44, 0.56];
-  let gi = 0;
+  // Draw every line first, then place each bubble on its own line where
+  // it clears the other bubbles, the splitters and the other lines.
+  const placed = [];
   for (const g of groups.values()) {
-    const a = start(g.src);
+    g.stub = isStub(g.src, g.drop, g.dst);
     const color = stroke(g.src);
-    let b;
-    if (g.drop) {
-      // Thin lines to each home, the bubble on the middle one.
-      for (const r of g.rows) {
-        const hy = homeY.get(r.dst.id);
-        lines.append(svgEl("path", { d: curve(a, { x: hy.x, y: hy.y }), fill: "none", stroke: color, "stroke-width": 1.8, opacity: 0.85 }));
-      }
-      const mid = homeY.get(g.rows[Math.floor(g.rows.length / 2)].dst.id);
-      b = { x: mid.x, y: mid.y };
-    } else {
-      b = end(g.dst);
-      lines.append(svgEl("path", { d: curve(a, b), fill: "none", stroke: color, "stroke-width": Math.min(9, 3 + g.rows.length * 0.5) }));
+    const ends = g.drop ? g.rows.map((r) => homeY.get(r.dst.id))
+      : g.whole ? [{ x: RX0, y: g.rows.reduce((sum, r) => sum + end(r.dst).y, 0) / g.rows.length }]
+      : [end(g.dst)];
+    const a = g.stub ? { x: CX0, y: STUB_Y } : start(g.src);
+    for (const b of ends) {
+      lines.append(svgEl("path", { d: curve(a, b), fill: "none", stroke: color, ...(g.stub ? { "stroke-dasharray": "10 7" } : {}),
+        "stroke-width": g.drop ? 1.8 : Math.min(9, 3 + g.rows.length * 0.5), opacity: g.drop ? 0.85 : 1 }));
     }
-    const t = g.drop ? 0.3 : spots[gi % spots.length];
-    marks.append(bubble(bezierAt(a, b, t), numText(g.rows.map((r) => r.num))));
-    gi++;
+    // The bubble rides the middle line of a fan of drops.
+    const b = ends[Math.floor(ends.length / 2)];
+    const pts = [];
+    for (let k = 0; k <= 60; k++) pts.push(bezierAt(a, b, k / 60));
+    // A long scatter of numbers is cut short: the checklist has them all.
+    const runs = numText(g.rows.map((r) => r.num)).split(", ");
+    const label = runs.length > 2 ? `${runs[0]} +${runs.length - 1} more` : runs.join(", ");
+    placed.push({ g, a, b, pts, label });
   }
-  svg.append(lines, marks);
+  const spots = [0.5, 0.36, 0.64, 0.28, 0.72, 0.44, 0.56];
+  const bubbles = [];
+  const hits = (box, q) => q.x > box.x0 && q.x < box.x1 && q.y > box.y0 && q.y < box.y1;
+  const overlap = (p, q) => Math.max(0, Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0)) * Math.max(0, Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0));
+  placed.forEach((it, gi) => {
+    const w = bubbleW(it.label) + 8;
+    const want = it.g.drop ? 0.3 : spots[gi % spots.length];
+    let best = null;
+    for (let k = 6; k <= 54; k++) {
+      const t = k / 60;
+      const at = it.pts[k];
+      const box = { x0: at.x - w / 2, y0: at.y - 19, x1: at.x + w / 2, y1: at.y + 19 };
+      let cost = Math.abs(t - want);
+      // Keep bubbles inside the case, clear of its walls.
+      if (box.x0 < CX0 + 6 || box.x1 > CX1 - 6) cost += 2;
+      for (const o of [...bubbles, ...splitBoxes]) cost += overlap(box, o) / 40;
+      for (const o of placed) if (o !== it) cost += o.pts.filter((q) => hits(box, q)).length * 0.25;
+      if (!best || cost < best.cost) best = { cost, at, box };
+    }
+    bubbles.push(best.box);
+    marks.append(bubble(best.at, it.label));
+  });
+  svg.append(lines, splitG, marks);
   if (!rows.length) svg.append(text((CX0 + CX1) / 2, H / 2, "Nothing spliced here", { "text-anchor": "middle", fill: INK_2 }));
   return svg;
 }
@@ -736,10 +833,14 @@ function bezierAt(a, b, t) {
   };
 }
 
+function bubbleW(label) {
+  return Math.max(30, label.length * 9 + 14);
+}
+
 // An orange bubble (a pill when it holds a range) with the splice numbers.
 function bubble(at, label) {
   const g = svgEl("g", { class: "bubble" });
-  const w = Math.max(30, label.length * 9 + 14);
+  const w = bubbleW(label);
   g.append(svgEl("rect", { x: at.x - w / 2, y: at.y - 15, width: w, height: 30, rx: 15, fill: BUBBLE, stroke: INK, "stroke-width": 2.5 }),
     svgEl("text", { x: at.x, y: at.y + 5.5, "text-anchor": "middle", "font-family": FONT, "font-weight": 800, "font-size": 15, fill: INK }, label));
   return g;
