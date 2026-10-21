@@ -857,6 +857,17 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 .group-table td.addr { font-weight: 700; }
 .group-line { grid-column: 1 / -1; font-weight: 700; margin-top: 4px; }
 .map-note { margin: 4px 0 0; font-size: 9pt; }
+/* Overview boxes: a big route cut into pieces laid side by side. */
+.print-sheet.measuring { font-size: 11pt; }
+.route-panels { display: flex; align-items: flex-start; gap: 18px; width: max-content; }
+.route-col { display: flex; flex-direction: column; gap: 12px; }
+.route-panels .route-tree { width: max-content; }
+.route-panels .route-tree + .route-tree { border-left: 2px dashed #999; padding-left: 14px; }
+.route-col + .route-col { border-left: 2px dashed #999; padding-left: 18px; }
+.route-col .route-tree + .route-tree { border-left: 0; padding-left: 0; border-top: 2px dashed #999; padding-top: 12px; }
+.panel-tag { display: inline-block; font-weight: 700; font-size: 12pt; background: #1b1f24; color: #fff; padding: 2px 10px; border-radius: 6px; margin-bottom: 4px; }
+.print-sheet .stop.see-box { border-style: dashed; background: #f4f4f4; }
+.stop.see-box .name { grid-column: 1 / -1; white-space: nowrap; }
 .tile-measure { position: absolute; }
 .map-tile { break-before: page; }
 .tile-label { font-weight: 700; font-size: 11pt; margin-bottom: 4px; }
@@ -1714,24 +1725,4 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .sheet-preview .loc-pic svg.big-pic { min-width: 640px; }
 .sheet-preview .loc-check { overflow-x: auto; }
 
-/* --- Round 8: estimate --- */
-.estimate-wrap { overflow-x: auto; }
-.estimate-table { width: 100%; }
-.estimate-table input { width: 100%; min-width: 70px; padding: 6px 8px; }
-.estimate-table td:first-child input { min-width: 160px; }
-.estimate-table td:nth-child(3) input { min-width: 44px; width: 60px; }
-.estimate-table input.typed { border-color: var(--accent); }
-.estimate-table .group-row td { font-weight: 700; padding-top: 12px; color: var(--accent-2); border-bottom: 1px solid var(--border); }
-.estimate-table .num { text-align: right; white-space: nowrap; }
-.estimate-note { display: block; font-size: 0.78rem; color: var(--muted); }
-.estimate-totals { margin-top: 14px; text-align: right; }
-.estimate-total { font-size: 1.3rem; font-weight: 700; }
-.btn.tiny { padding: 2px 9px; font-size: 1.05rem; }
-.print-sheet .estimate-table .group-row td { color: #000; background: #f0f0f0; }
-.print-sheet .estimate-table .total-row td { font-weight: 700; border-top: 2px solid #000; }
-.print-sheet .estimate-page .sheet-table { max-width: 10in; }
 #splice-body { overflow-x: auto; }
-.estimate-table th:nth-child(2), .estimate-table th:nth-child(4) { width: 130px; }
-.estimate-table th:nth-child(3) { width: 60px; }
-.estimate-table th:nth-child(5) { width: 120px; }
-.estimate-table th:nth-child(6) { width: 40px; }

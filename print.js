@@ -91,7 +91,7 @@ document.getElementById("print-go").addEventListener("click", () => {
 });
 
 // Print just one page instead of the whole job: a location's page for a
-// crew at that stop (splices.js), or the estimate (estimate.js). `page`
+// crew at that stop (splices.js). `page`
 // builds it from the splice model.
 let printOnly = null;
 
@@ -170,22 +170,22 @@ function buildSheet() {
     page.append(head, problemsBlock(), diagram);
     if (locs.length) title.append(el("div", "sheet-detail", `${locs.length} splice location page${locs.length === 1 ? "" : "s"} follow: the black "Page" tag on each card.`));
     sheet.append(page);
-    for (const compact of [false, true]) {
-      const tree = el("div", "route-tree");
-      tree.append(printBranch(plan.points[0], compact, model, pageOf));
-      diagram.innerHTML = "";
-      diagram.append(tree);
-      if (compact) diagram.append(el("p", "map-note", "Each location's homes are listed on its page and in the Homes table."));
-      // Measure off-screen at print size, then scale to fit the page.
-      sheet.classList.add("measuring");
-      const used = head.offsetHeight + page.querySelector(".sheet-problems").offsetHeight;
-      const room = PRINT_HEIGHT_PX - used - 90;
-      const scale = Math.min(1, PRINT_WIDTH_PX / tree.scrollWidth, room / tree.scrollHeight);
-      drawWires(tree);
-      sheet.classList.remove("measuring");
-      tree.style.zoom = scale < 1 ? String(scale) : "";
-      if (scale >= MIN_MAP_SCALE) break;
+    sheet.classList.add("measuring");
+    const used = head.offsetHeight + page.querySelector(".sheet-problems").offsetHeight;
+    sheet.classList.remove("measuring");
+    // Room for the route under the title block, less the frame and the note.
+    layoutOverview(diagram, model, pageOf, PRINT_HEIGHT_PX - used - 60);
+    // Zoom doesn't shrink borders and text exactly, so check the whole
+    // page and nudge the route smaller until it fits on one sheet.
+    sheet.classList.add("measuring");
+    const panels = diagram.querySelector(".route-panels");
+    for (let i = 0; i < 4; i++) {
+      const over = page.offsetHeight - (PRINT_HEIGHT_PX - 24);
+      if (over <= 0) break;
+      const h = panels.getBoundingClientRect().height;
+      panels.style.zoom = String((Number(panels.style.zoom) || 1) * Math.max(0.5, (h - over) / h));
     }
+    sheet.classList.remove("measuring");
     if (!parts.overview) page.hidden = true;
     if (parts.tiles) {
       const tiles = el("div", "map-tiles");
@@ -203,6 +203,121 @@ function buildSheet() {
     page.append(head, detailsTable(), cableTable(model), pathTable(), splitterTable(), homesTable(), legend());
     sheet.append(page);
   }
+}
+
+// The overview has to fit one sheet. A big route is cut into boxes laid
+// side by side: a branch too tall for the page moves into its own box,
+// and where it left off the route shows a "See box 2" card. Tries a few
+// cut heights and keeps the one that prints largest.
+function layoutOverview(diagram, model, pageOf, room) {
+  let best = null;
+  for (const compact of [false, true]) {
+    sheet.classList.add("measuring");
+    diagram.innerHTML = "";
+    const whole = el("div", "route-panels");
+    whole.append(routePanel(plan.points[0], compact, model, pageOf, new Map()));
+    diagram.append(whole);
+    const fullH = whole.scrollHeight;
+    sheet.classList.remove("measuring");
+    for (let k = 1; k <= 8; k++) {
+      const tryIt = overviewPanels(diagram, compact, model, pageOf, fullH / k, room);
+      if (!best || tryIt.scale > best.scale + 0.005) best = tryIt;
+    }
+    if (best.scale >= MIN_MAP_SCALE) break;
+  }
+  overviewPanels(diagram, best.compact, model, pageOf, best.limit, room);
+}
+
+// Cuts the route into boxes no taller than `limit` (unscaled), packs them
+// into columns and scales the lot to fit. Leaves it drawn in `diagram`.
+function overviewPanels(diagram, compact, model, pageOf, limit, room) {
+  const cut = new Map();
+  let wrap;
+  sheet.classList.add("measuring");
+  for (let tries = 0; tries < 60; tries++) {
+    wrap = drawPanels(diagram, compact, model, pageOf, cut);
+    const tall = [...wrap.querySelectorAll(".route-tree")].find((t) => t.offsetHeight > limit);
+    if (!tall) break;
+    // Move out the biggest branch that fits a box of its own, or else the
+    // smallest one that doesn't.
+    // Skip a branch that is nearly the whole box: moving it just leaves an
+    // empty box behind.
+    const inside = [...tall.querySelectorAll(".branch[data-id]")].filter((b) => b.offsetHeight < tall.offsetHeight * 0.8);
+    if (!inside.length) break;
+    const fits = inside.filter((b) => b.offsetHeight <= limit);
+    const pick = fits.length ? fits.reduce((a, b) => (b.offsetHeight > a.offsetHeight ? b : a))
+      : inside.reduce((a, b) => (b.offsetHeight < a.offsetHeight ? b : a));
+    cut.set(pick.dataset.id, 0);
+  }
+  // Columns, left to right: boxes stack until the next won't fit. Try a
+  // few column heights and keep the one that prints largest.
+  const trees = [...wrap.querySelectorAll(".route-tree")].map((t) => ({ t, w: t.offsetWidth, h: t.offsetHeight }));
+  const pack = (colH) => {
+    const cols = [];
+    for (const b of trees) {
+      const c = cols[cols.length - 1];
+      if (c && c.h + 12 + b.h <= colH) {
+        c.items.push(b);
+        c.h += 12 + b.h;
+        c.w = Math.max(c.w, b.w);
+      } else cols.push({ items: [b], h: b.h, w: b.w });
+    }
+    const w = cols.reduce((n, c) => n + c.w + 38, 0);
+    const h = Math.max(...cols.map((c) => c.h));
+    return { cols, scale: Math.min(1, PRINT_WIDTH_PX / w, room / h) };
+  };
+  const tallest = Math.max(...trees.map((b) => b.h));
+  const total = trees.reduce((n, b) => n + b.h + 12, 0);
+  let packed = pack(tallest);
+  for (let colH = tallest; colH <= total; colH += Math.max(40, (total - tallest) / 40)) {
+    const p = pack(colH);
+    if (p.scale > packed.scale) packed = p;
+  }
+  wrap.innerHTML = "";
+  for (const c of packed.cols) {
+    const col = el("div", "route-col");
+    col.append(...c.items.map((b) => b.t));
+    wrap.append(col);
+  }
+  for (const b of trees) drawWires(b.t);
+  const scale = Math.min(1, PRINT_WIDTH_PX / wrap.scrollWidth, room / wrap.scrollHeight);
+  sheet.classList.remove("measuring");
+  wrap.style.zoom = scale < 1 ? String(scale) : "";
+  if (compact) diagram.append(el("p", "map-note", "Each location's homes are listed on its page and in the Homes table."));
+  return { compact, limit, scale };
+}
+
+// Draws the main box and one box per cut branch, numbered in route order.
+function drawPanels(diagram, compact, model, pageOf, cut) {
+  diagram.innerHTML = "";
+  const wrap = el("div", "route-panels");
+  diagram.append(wrap);
+  const starts = [plan.points[0].id, ...plan.points.map((p) => p.id).filter((id) => cut.has(id))];
+  starts.forEach((id, i) => {
+    if (i) cut.set(id, i + 1);
+  });
+  starts.forEach((id, i) => {
+    const panel = routePanel(point(id), compact, model, pageOf, cut);
+    if (starts.length > 1) {
+      const from = i ? plan.paths.find((x) => x.to === id) : null;
+      panel.prepend(el("div", "panel-tag", i ? `Box ${i + 1} · continued from ${point(from.from).name}` : `Box 1 · start`));
+    }
+    wrap.append(panel);
+  });
+  return wrap;
+}
+
+function routePanel(p, compact, model, pageOf, cut) {
+  const tree = el("div", "route-tree");
+  tree.append(printBranch(p, compact, model, pageOf, cut));
+  return tree;
+}
+
+// Where a branch moved to its own box.
+function seeBoxEl(p, box) {
+  const card = el("div", "stop see-box");
+  card.append(el("div", "name", p.name), el("div", "group-line", `See box ${box}`));
+  return card;
 }
 
 // The full-size map cut into page-sized pieces, each labeled with where
@@ -253,8 +368,9 @@ function buildTiles(tiles, diagram, model) {
 }
 
 // Like the on-screen route, but a location's homes share one box.
-function printBranch(p, compact, model, pageOf) {
+function printBranch(p, compact, model, pageOf, cut) {
   const branch = el("div", "branch");
+  branch.dataset.id = p.id;
   const stop = stopEl(p);
   stop.classList.remove("selected");
   // Which location page to turn to.
@@ -273,7 +389,8 @@ function printBranch(p, compact, model, pageOf) {
     return point(x.to).type === "nid" && !childPaths(x.to).length && !(c && c.through);
   });
   const others = paths.filter((x) => !homePaths.includes(x));
-  const rows = others.map((x) => [pathEl(x, model), printBranch(point(x.to), compact, model, pageOf)]);
+  const rows = others.map((x) => [pathEl(x, model), cut && cut.has(x.to) ? seeBoxEl(point(x.to), cut.get(x.to))
+    : printBranch(point(x.to), compact, model, pageOf, cut)]);
   if (homePaths.length === 1) rows.push([pathEl(homePaths[0], model), stopEl(point(homePaths[0].to))]);
   else if (homePaths.length > 1) rows.push([dropsEl(homePaths), homeGroup(homePaths, compact)]);
   if (rows.length) {

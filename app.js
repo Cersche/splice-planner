@@ -36,7 +36,16 @@ function migratePlan(p) {
   p.unassigned = p.unassigned || [];
   p.xconnects = p.xconnects || [];
   if (typeof migrateCounts === "function") migrateCounts(p);
+  // Round 8 kept estimate prices in the plan; the estimate tool is gone.
+  delete p.estimate;
   return p;
+}
+
+// Unit prices the estimate tool remembered on this device.
+try {
+  localStorage.removeItem("splicePlanner.prices");
+} catch {
+  // Nothing to clear.
 }
 
 function makeId() {
