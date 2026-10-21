@@ -622,10 +622,12 @@ function bigPicture(L, rows) {
   const inTop = Math.max(84, H * 0.42 - inH / 2);
   const usedIn = new Set(rows.filter((r) => r.src && r.src.kind === "fiber").map((r) => Math.ceil(r.src.n / 12)));
   let stripeY = () => inTop + inH / 2;
+  let tubeRoomIn = inH;
   if (inCable) {
     const T = tubeCount(inCable.fibers);
     const step = (inH - 16) / T;
     stripeY = (t) => inTop + 8 + (t - 1) * step + step / 2;
+    tubeRoomIn = step;
     svg.append(svgEl("rect", { x: 24, y: inTop, width: CX0 - 24 + 6, height: inH, rx: Math.min(inH / 2, 40), fill: "#e9e5dc", stroke: INK, "stroke-width": 3 }));
     for (let t = 1; t <= T; t++) {
       const c = colorAt(t - 1);
@@ -647,6 +649,7 @@ function bigPicture(L, rows) {
   const RX0 = CX1 - 6;
   const RX1 = PIC_W - 20;
   const outStripe = new Map(); // cable id -> (tube) -> y
+  const outRoom = new Map(); // cable id -> height of one tube's stripe
   let ry = 52;
   const usedOut = new Map();
   for (const r of rows) {
@@ -674,6 +677,7 @@ function bigPicture(L, rows) {
         fill: inkFor(colorAt(t - 1)), opacity: used || T === 1 ? 1 : 0.28 }));
     }
     outStripe.set(c.id, ys);
+    outRoom.set(c.id, step);
     // A cable passing through: one wide band straight across the case.
     if (it.kind === "through" && inCable) {
       const a = { x: CX0, y: inTop + inH / 2 };
@@ -788,15 +792,25 @@ function bigPicture(L, rows) {
     const fibers = g.src && g.src.kind === "fiber";
     if (fibers && !g.drop) {
       // Fiber to fiber: one strand per fiber in its own color, side by
-      // side, over a dark edge so white and yellow still show.
+      // side across the case, narrowing at each end onto the tube it
+      // leaves and the tube it joins, and running a little way into the
+      // cable along that tube so it's clear where the bundle lands.
       const strands = [...g.rows].sort((p, q) => p.src.n - q.src.n);
       const b = ends[0];
-      lines.append(svgEl("path", { d: curve(a, b), fill: "none", stroke: INK, opacity: 0.55, "stroke-linecap": "round",
-        "stroke-width": strands.length * STRAND_GAP + 1.6 }));
-      strands.forEach((r, i) => {
-        const off = (i - (strands.length - 1) / 2) * STRAND_GAP;
-        lines.append(svgEl("path", { d: curve({ x: a.x, y: a.y + off }, { x: b.x, y: b.y + off }), fill: "none",
-          stroke: strandColor(r.src.n), "stroke-width": STRAND_GAP - 0.5 }));
+      const fit = (room) => Math.min(STRAND_GAP, room / strands.length);
+      const gapA = fit(tubeRoomIn * 0.8);
+      const toCable = g.dst.kind === "cable";
+      const gapB = fit(toCable ? (outRoom.get(g.dst.id) || 10) * 0.8 : 40);
+      const gapMid = STRAND_GAP;
+      const paths = strands.map((r, i) => {
+        const k = i - (strands.length - 1) / 2;
+        return ribbonPath({ x: a.x, y: a.y + k * gapA }, { x: b.x, y: b.y + k * gapB }, k * gapMid, toCable ? RX0 + 36 : b.x);
+      });
+      for (const d of paths) {
+        lines.append(svgEl("path", { d, fill: "none", stroke: INK, opacity: 0.55, "stroke-width": STRAND_GAP + 0.9 }));
+      }
+      paths.forEach((d, i) => {
+        lines.append(svgEl("path", { d, fill: "none", stroke: strandColor(strands[i].src.n), "stroke-width": STRAND_GAP - 0.5 }));
       });
     } else {
       for (const [i, b] of ends.entries()) {
@@ -845,6 +859,14 @@ function bigPicture(L, rows) {
 function curve(a, b) {
   const dx = (b.x - a.x) * 0.45;
   return `M${a.x},${a.y} C${a.x + dx},${a.y} ${b.x - dx},${b.y} ${b.x},${b.y}`;
+}
+
+// One strand of a bundle: it leaves at a and arrives at b, spreading out
+// by "mid" across the middle so the strands read side by side, then runs
+// straight on to tailX inside the cable.
+function ribbonPath(a, b, mid, tailX) {
+  const dx = (b.x - a.x) * 0.45;
+  return `M${a.x},${a.y} C${a.x + dx},${a.y + mid} ${b.x - dx},${b.y + mid} ${b.x},${b.y} L${tailX},${b.y}`;
 }
 
 function bezierAt(a, b, t) {
