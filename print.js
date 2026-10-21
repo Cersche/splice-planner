@@ -486,6 +486,8 @@ const PIC_W = 1540;
 // Tallest a location drawing gets, leaving room for the title block.
 const MAX_PIC_IN = 8.9;
 const TABLES_NEXT_SHEET_IN = 8.1;
+// Width given to each fiber where splices run as strands side by side.
+const STRAND_GAP = 3.4;
 const INK = "#1b1f24";
 const INK_2 = "#4d5560";
 const BUBBLE = "#f08a00";
@@ -500,6 +502,11 @@ function svgEl(tag, attrs = {}, text) {
 }
 
 // A line color that shows on white paper.
+// A fiber's own color (not its tube's), for the strands in the drawing.
+function strandColor(n) {
+  return inkFor(colorAt((n - 1) % 12));
+}
+
 function inkFor(color) {
   const base = color.name.split("/")[0];
   if (base === "White") return "#b9b9b9";
@@ -778,9 +785,26 @@ function bigPicture(L, rows) {
       : g.whole ? [{ x: RX0, y: g.rows.reduce((sum, r) => sum + end(r.dst).y, 0) / g.rows.length }]
       : [end(g.dst)];
     const a = g.stub ? { x: CX0, y: STUB_Y } : start(g.src);
-    for (const b of ends) {
-      lines.append(svgEl("path", { d: curve(a, b), fill: "none", stroke: color, ...(g.stub ? { "stroke-dasharray": "10 7" } : {}),
-        "stroke-width": g.drop ? 1.8 : Math.min(9, 3 + g.rows.length * 0.5), opacity: g.drop ? 0.85 : 1 }));
+    const fibers = g.src && g.src.kind === "fiber";
+    if (fibers && !g.drop) {
+      // Fiber to fiber: one strand per fiber in its own color, side by
+      // side, over a dark edge so white and yellow still show.
+      const strands = [...g.rows].sort((p, q) => p.src.n - q.src.n);
+      const b = ends[0];
+      lines.append(svgEl("path", { d: curve(a, b), fill: "none", stroke: INK, opacity: 0.55, "stroke-linecap": "round",
+        "stroke-width": strands.length * STRAND_GAP + 1.6 }));
+      strands.forEach((r, i) => {
+        const off = (i - (strands.length - 1) / 2) * STRAND_GAP;
+        lines.append(svgEl("path", { d: curve({ x: a.x, y: a.y + off }, { x: b.x, y: b.y + off }), fill: "none",
+          stroke: strandColor(r.src.n), "stroke-width": STRAND_GAP - 0.5 }));
+      });
+    } else {
+      for (const [i, b] of ends.entries()) {
+        // A drop fed straight off a fiber takes that fiber's color.
+        const c = fibers ? strandColor(g.rows[i].src.n) : color;
+        lines.append(svgEl("path", { d: curve(a, b), fill: "none", stroke: c, ...(g.stub ? { "stroke-dasharray": "10 7" } : {}),
+          "stroke-width": g.drop ? 1.8 : Math.min(9, 3 + g.rows.length * 0.5), opacity: g.drop ? 0.85 : 1 }));
+      }
     }
     // The bubble rides the middle line of a fan of drops.
     const b = ends[Math.floor(ends.length / 2)];
