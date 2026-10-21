@@ -93,6 +93,8 @@ you have signal and it will work offline after that.
     the app installed in Chrome or Edge on a computer, double-clicking a
     `.ffhspl` file can open it in the app.
 12. **Print / PDF** prints 11x17 field sheets: a route overview on page 1,
+    (a big route is cut into numbered boxes side by side so it stays on one
+    sheet; a dashed "See box 2" card shows where a branch continues),
     then one page per splice location (a big drawing of the stop with every
     splice numbered in an orange bubble, a checklist keyed to the bubbles,
     and the homes it feeds), then summary tables. A full-size route map
@@ -101,13 +103,6 @@ you have signal and it will work offline after that.
     sheet** (first in its menu; a Guest goes straight to it). It shows the
     same drawing as that location's printed page, or the splice list, and
     **Print this location** prints just that one page.
-14. **Estimate** counts what the job takes: cable feet by size (from the
-    footage on each path), drops, conduit, locations, splice cases,
-    splitters, terminals, fusion splices, patches and drop installs. Type a
-    unit price on each line (or over any quantity), add your own lines, and
-    see the total and cost per home. Prices stay with the plan, and the last
-    ones used on a device fill in new plans. **Print estimate** or **Save
-    CSV** for a spreadsheet.
 
 Nothing asks "Are you sure?": removals happen right away with an **Undo**
 bar at the bottom. **Start over** asks for a second tap.
