@@ -488,6 +488,8 @@ const MAX_PIC_IN = 8.9;
 const TABLES_NEXT_SHEET_IN = 8.1;
 // Width given to each fiber where splices run as strands side by side.
 const STRAND_GAP = 3.4;
+// Room per strand where a bundle lands on its tube.
+const LAND_GAP = 1.8;
 const INK = "#1b1f24";
 const INK_2 = "#4d5560";
 const BUBBLE = "#f08a00";
@@ -576,6 +578,25 @@ function bigPicture(L, rows) {
 
   // --- Sizes ---
   const bundleH = (fibers) => Math.max(34, Math.min(150, tubeCount(fibers) * 10 + 14));
+  // Strands landing on each tube of a cable out; a tube taking a bundle
+  // gets room enough for its strands to stay apart.
+  const landing = new Map(); // cable id -> (tube) -> strands
+  for (const r of rows) {
+    if (r.dst.kind !== "cable" || !r.src || r.src.kind !== "fiber") continue;
+    if (!landing.has(r.dst.id)) landing.set(r.dst.id, new Map());
+    const t = Math.ceil(r.dst.n / 12);
+    landing.get(r.dst.id).set(t, (landing.get(r.dst.id).get(t) || 0) + 1);
+  }
+  const tubeRooms = (c) => {
+    const T = tubeCount(c.fibers);
+    const base = (bundleH(c.fibers) - 12) / T;
+    const land = landing.get(c.id) || new Map();
+    return Array.from({ length: T }, (_, i) => {
+      const n = land.get(i + 1) || 0;
+      return n > 1 ? Math.max(base, n * LAND_GAP + 8) : base;
+    });
+  };
+  const cableH = (c) => 12 + tubeRooms(c).reduce((a, b) => a + b, 0);
   // Cables out are stacked in the order of the tubes that feed them, so
   // the lines across the case don't cross; splitter-fed ones go last,
   // next to the splitters and drops at the bottom.
@@ -591,7 +612,7 @@ function bigPicture(L, rows) {
     .sort((a, b) => a.order - b.order || a.i - b.i);
   const dropCols = drops.length > 14 ? 2 : 1;
   const dropRows = Math.ceil(drops.length / dropCols);
-  const rightH = rightItems.reduce((h, it) => h + bundleH(it.c.fibers) + 44, 0) + (drops.length ? 34 + dropRows * 22 : 0);
+  const rightH = rightItems.reduce((h, it) => h + cableH(it.c) + 44, 0) + (drops.length ? 34 + dropRows * 22 : 0);
   const inH = inCable ? Math.max(50, Math.min(230, tubeCount(inCable.fibers) * 13 + 16)) : 60;
   const splitH = splitters.length * 78;
   const H = Math.max(340, rightH + 50, splitH + 140, inH + 150);
@@ -649,7 +670,7 @@ function bigPicture(L, rows) {
   const RX0 = CX1 - 6;
   const RX1 = PIC_W - 20;
   const outStripe = new Map(); // cable id -> (tube) -> y
-  const outRoom = new Map(); // cable id -> height of one tube's stripe
+  const outRoom = new Map(); // cable id -> height given to each tube
   let ry = 52;
   const usedOut = new Map();
   for (const r of rows) {
@@ -659,7 +680,8 @@ function bigPicture(L, rows) {
   }
   for (const it of rightItems) {
     const c = it.c;
-    const h = bundleH(c.fibers);
+    const h = cableH(c);
+    const rooms = tubeRooms(c);
     const spans = cableSpans(c);
     const end = point(spans[spans.length - 1].to);
     const label = it.kind === "through" ? `${c.name} · ${c.fibers}F ${THROUGH_LABELS[c.through]} → ${end.name}` : `${c.name} · ${c.fibers}F → ${end.name}`;
@@ -667,17 +689,19 @@ function bigPicture(L, rows) {
     const y0 = ry + 16;
     svg.append(svgEl("rect", { x: RX0, y: y0, width: RX1 - RX0, height: h, rx: Math.min(h / 2, 30), fill: "#e9e5dc", stroke: INK, "stroke-width": 3 }));
     const T = tubeCount(c.fibers);
-    const step = (h - 12) / T;
     const ys = new Map();
+    const step = Math.min(...rooms);
+    let ty = y0 + 6;
     for (let t = 1; t <= T; t++) {
-      const y = y0 + 6 + (t - 1) * step + step / 2;
+      const y = ty + rooms[t - 1] / 2;
+      ty += rooms[t - 1];
       ys.set(t, y);
       const used = it.kind === "through" || (usedOut.get(c.id) || new Set()).has(t);
       svg.append(svgEl("rect", { x: RX0 + 22, y: y - Math.min(4, step * 0.36), width: RX1 - RX0 - 44, height: Math.min(8, step * 0.72), rx: 4,
         fill: inkFor(colorAt(t - 1)), opacity: used || T === 1 ? 1 : 0.28 }));
     }
     outStripe.set(c.id, ys);
-    outRoom.set(c.id, step);
+    outRoom.set(c.id, rooms);
     // A cable passing through: one wide band straight across the case.
     if (it.kind === "through" && inCable) {
       const a = { x: CX0, y: inTop + inH / 2 };
@@ -800,7 +824,7 @@ function bigPicture(L, rows) {
       const fit = (room) => Math.min(STRAND_GAP, room / strands.length);
       const gapA = fit(tubeRoomIn * 0.8);
       const toCable = g.dst.kind === "cable";
-      const gapB = fit(toCable ? (outRoom.get(g.dst.id) || 10) * 0.8 : 40);
+      const gapB = fit(toCable ? (outRoom.get(g.dst.id)?.[Math.ceil(g.dst.n / 12) - 1] || 10) * 0.8 : 40);
       const gapMid = STRAND_GAP;
       const paths = strands.map((r, i) => {
         const k = i - (strands.length - 1) / 2;
