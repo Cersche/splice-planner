@@ -145,14 +145,18 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
   background: var(--card-2);
   color: var(--accent-2);
 }
-.big-btn[data-start="cabinet"] .icon-row svg:first-child { color: #7fb0f0; background: color-mix(in srgb, #3f7fd9 24%, var(--card)); }
-.big-btn[data-start="cabinet"] .icon-row svg:last-child { color: #7ccbdc; background: color-mix(in srgb, #2a9bb5 24%, var(--card)); }
-.big-btn[data-start="other"] .icon-row svg { color: #d9b98c; background: color-mix(in srgb, #b08550 22%, var(--card)); }
-/* Narrow screens: the four "Other" icons stack 2x2 so they stay inside the card. */
+.big-btn[data-start="new"] .icon-row svg:nth-child(1) { color: #7fb0f0; background: color-mix(in srgb, #3f7fd9 24%, var(--card)); }
+.big-btn[data-start="new"] .icon-row svg:nth-child(2) { color: #7ccbdc; background: color-mix(in srgb, #2a9bb5 24%, var(--card)); }
+/* An empty plan: the card that places the start */
+.stop.empty-start { border-style: dashed; cursor: pointer; }
+.stop.empty-start .lot { font-family: inherit; }
+.stop.empty-start .badge { font-size: 1.6rem; font-weight: 600; line-height: 1; display: grid; place-items: center; }
+.big-btn[data-start="new"] .icon-row svg:nth-child(n+3) { color: #d9b98c; background: color-mix(in srgb, #b08550 22%, var(--card)); }
+/* Narrow screens: the four icons stack 2x2 so they stay inside the card. */
 @media (max-width: 640px) {
   .big-btn { min-width: 0; padding: 24px 10px; }
-  .start-buttons { grid-template-columns: 1fr 1fr; gap: 12px; }
-  .big-btn[data-start="other"] .icon-row { display: grid; grid-template-columns: repeat(2, auto); justify-content: center; }
+  .start-buttons { grid-template-columns: 1fr; gap: 12px; }
+  .big-btn[data-start="new"] .icon-row { display: grid; grid-template-columns: repeat(2, auto); justify-content: center; }
   .icon-row svg.ic { width: 46px; height: 46px; padding: 8px; }
 }
 
@@ -546,6 +550,7 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 .fix-list { margin-bottom: 8px; }
 .import-summary { font-weight: 600; }
 .preview-wrap { max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; }
+.list-search { width: 100%; margin: 0 0 8px; }
 .preview { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
 .preview td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
 .preview tr.skip td { color: var(--muted); text-decoration: line-through; }
@@ -1087,7 +1092,11 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
   border-radius: 8px;
   cursor: pointer;
   touch-action: none;
+  transition: width 0.15s, height 0.15s, opacity 0.15s;
 }
+/* Something on the route is under the map: it shrinks to a corner. */
+.minimap.tucked { width: 60px; height: 37px; opacity: 0.7; }
+.minimap.tucked:hover, .minimap.tucked:focus-visible { width: 180px; height: 110px; opacity: 1; }
 .route-hint { margin-bottom: 8px; }
 .cable-note { white-space: pre-line; }
 
@@ -1255,6 +1264,8 @@ body:not(.guest) .guest-only { display: none !important; }
   .route-view { margin: 0 -12px -24px; }
   .route-hint { display: none; }
   .minimap { width: 120px; height: 74px; }
+  .minimap.tucked { width: 48px; height: 30px; }
+  .minimap.tucked:hover { width: 120px; height: 74px; }
   .zoom-bar { top: 8px; right: 8px; }
   .zoom-btn { min-width: 34px; padding: 0 6px; }
   .hc-wrap { grid-template-columns: 1fr; }
@@ -1706,14 +1717,44 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   border-radius: 6px;
   cursor: pointer;
 }
-/* Above a line that runs across, beside one that runs up or down. */
-.grid-label.h { transform: translate(-50%, calc(-100% - 5px)); }
-.grid-label.v { transform: translate(8px, -50%); text-align: left; }
+/* Centred on the spot beside its line that routing picked (grid.js). */
+.grid-label { transform: translate(-50%, -50%); }
 .grid-label .cable-name { font-size: 0.78rem; }
 .grid-label .cable-size { font-size: 0.68rem; }
 .grid-label:hover .cable-name, .grid-label.selected .cable-name { color: var(--accent-2); }
 .zoom-btn.fit .ic { width: 14px; height: 14px; vertical-align: -2px; }
 .zoom-btn.on { background: color-mix(in srgb, var(--accent) 25%, var(--card)); color: var(--text); }
+/* Autosave switch beside Save (files.js) */
+.autosave { display: inline-flex; align-items: center; gap: 6px; padding: 0 6px; font-size: 0.9rem; cursor: pointer; }
+.autosave[hidden] { display: none; }
+.autosave input { appearance: none; position: relative; flex: none; width: 34px; height: 20px; margin: 0; border: 1px solid var(--border-2); border-radius: 10px; background: var(--card-2); cursor: pointer; transition: background 0.15s; }
+.autosave input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: transform 0.15s; }
+.autosave input:checked { background: var(--accent); border-color: var(--accent); }
+.autosave input:checked::after { transform: translateX(14px); background: #fff; }
+.autosave-note { color: var(--muted); font-size: 0.78rem; }
+.autosave-note:empty { display: none; }
+/* Several homes picked on the grid */
+.grid-cell.picked .stop { outline: 3px solid var(--accent-2); outline-offset: 3px; }
+.route-view.selecting { cursor: crosshair; }
+.grid-lasso { position: absolute; z-index: 7; pointer-events: none; border: 1.5px dashed var(--accent-2); background: color-mix(in srgb, var(--accent-2) 12%, transparent); border-radius: 4px; }
+.pick-bar {
+  position: absolute;
+  z-index: 8;
+  left: 12px;
+  top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  padding: 6px 8px 6px 12px;
+  background: var(--card-3);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.pick-text { font-weight: 600; margin-right: 4px; }
+@media print { .pick-bar { display: none !important; } }
 
 /* --- Round 8: one location's sheet on screen --- */
 .seg { display: inline-flex; gap: 2px; padding: 3px; margin: -4px 0 14px; background: var(--card-2); border: 1px solid var(--border); border-radius: 10px; }

@@ -155,6 +155,12 @@ function openEquipment(locId, startKind) {
     const addError = el("p", "error");
     addError.hidden = true;
     const add = btnEl("Add", addEquipment, "btn");
+    // Enter in the add boxes adds the equipment, not the dialog's Done.
+    fields.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.target.tagName !== "INPUT") return;
+      e.preventDefault();
+      add.click();
+    });
 
     function tmpl() {
       return templateById(template.value);
