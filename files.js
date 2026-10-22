@@ -1,6 +1,6 @@
 // Plan files (.ffhspl, JSON inside), so a plan can be backed up, sent
-// to someone else or handed to a crew. Sharing is by file only: "Share
-// plan" saves a file named with the job, who saved it and the date, and
+// to someone else or handed to a crew. Sharing is by file only: "Save"
+// writes a file named with the job, who saved it and the date, and
 // the file remembers who made the plan and who last changed it. Old
 // .json plan files still open.
 
@@ -31,7 +31,7 @@ function downloadFile(name, blob) {
 // On a phone this opens the share sheet (Messages, Mail, Files ...);
 // elsewhere, or if that isn't allowed, the file downloads.
 document.getElementById("share-plan").addEventListener("click", async () => {
-  if (guestBlocked()) return;
+  if (guestBlocked() || emptyBlocked()) return;
   savePlan();
   const name = planFileName();
   const blob = new Blob([planFileText()], { type: "application/json" });
@@ -41,7 +41,7 @@ document.getElementById("share-plan").addEventListener("click", async () => {
       const file = new File([blob], name, { type: "application/json" });
       if (navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: plan.title || "Splice plan" });
-        return showNote(`Shared ${name}.`);
+        return showNote(`Saved ${name}.`);
       }
     } catch (err) {
       if (err && err.name === "AbortError") return;
@@ -95,6 +95,8 @@ function loadPlanText(text, fileName) {
   closePanels();
   selectedId = null;
   show("route");
+  // A plan just opened is shown whole, whatever its size.
+  requestAnimationFrame(() => requestAnimationFrame(() => fitAll()));
   // "From Dave, Oct 20"
   const who = data.savedBy && data.savedBy !== GUEST ? data.savedBy : plan.editedBy || plan.createdBy;
   const when = data.savedAt || plan.editedAt;
@@ -103,6 +105,166 @@ function loadPlanText(text, fileName) {
   if (before) offerUndo(`${from}Opened ${fileName}. The plan that was on screen is replaced.`, before);
   else showNote(`${from}Opened ${fileName}.`);
   renderHeader();
+}
+
+// --- Autosave ---
+// Chrome and Edge (and the installed app) can keep writing the plan file
+// itself: turn Autosave on, pick where the file goes once, and every
+// change is saved there a moment later. The spot is remembered for that
+// plan on this device; after the app reopens, the browser asks once
+// before writing to it again. Other browsers keep the Save button only.
+
+const AUTOSAVE_DELAY = 1500;
+const autosaveBox = document.getElementById("autosave");
+const autosaveOn = document.getElementById("autosave-on");
+const autosaveNote = document.getElementById("autosave-note");
+const canAutosave = "showSaveFilePicker" in window;
+// { key: the plan it's for, handle, paused, saving, savedAt, error }
+let autosave = null;
+let autosaveTimer = null;
+
+// The plan's own key: when it was made, which stays with the file.
+function planKey() {
+  return plan && plan.createdAt;
+}
+
+function handleStore(mode, act) {
+  return new Promise((resolve) => {
+    let req;
+    try {
+      req = indexedDB.open("splicePlanner", 1);
+    } catch {
+      return resolve(null);
+    }
+    req.onupgradeneeded = () => req.result.createObjectStore("autosave");
+    req.onerror = () => resolve(null);
+    req.onsuccess = () => {
+      const tx = req.result.transaction("autosave", mode);
+      const r = act(tx.objectStore("autosave"));
+      tx.oncomplete = () => resolve(r && r.result);
+      tx.onerror = () => resolve(null);
+    };
+  });
+}
+
+// After a plan opens: pick up its autosave spot, if it had one here.
+async function syncAutosave() {
+  if (!canAutosave) return;
+  if (autosave && autosave.key !== planKey()) autosave = null;
+  if (!autosave && planKey()) {
+    const key = planKey();
+    const handle = await handleStore("readonly", (s) => s.get(key));
+    if (handle && planKey() === key && !autosave) autosave = { key, handle, paused: true };
+  }
+  renderAutosave();
+}
+
+function renderAutosave() {
+  autosaveBox.hidden = !canAutosave || !plan;
+  if (autosaveBox.hidden) return;
+  autosaveOn.checked = !!autosave && !autosave.paused;
+  let note = "";
+  let tip = "Save the plan file by itself as you work";
+  if (autosave && autosave.paused) {
+    note = "Paused: tap to resume";
+    tip = `Tap to keep saving to ${autosave.handle.name}`;
+  } else if (autosave && autosave.error) {
+    note = "Couldn't save: tap to retry";
+    tip = autosave.error;
+  } else if (autosave && autosave.saving) note = "Saving…";
+  else if (autosave && autosave.savedAt) {
+    note = `Saved ${ago(autosave.savedAt)}`;
+    tip = `Saving to ${autosave.handle.name}`;
+  }
+  autosaveNote.textContent = note;
+  autosaveBox.title = tip;
+}
+
+function ago(t) {
+  const min = Math.floor((Date.now() - t) / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
+  const h = Math.floor(min / 60);
+  return `${h} hr ago`;
+}
+
+setInterval(() => autosave && autosave.savedAt && renderAutosave(), 30000);
+
+autosaveBox.addEventListener("click", (e) => {
+  // The note under a paused or failed autosave resumes it.
+  if (e.target === autosaveOn || !autosave || !(autosave.paused || autosave.error)) return;
+  e.preventDefault();
+  resumeAutosave();
+});
+
+autosaveOn.addEventListener("change", async () => {
+  if (!autosaveOn.checked) {
+    const key = autosave && autosave.key;
+    autosave = null;
+    clearTimeout(autosaveTimer);
+    if (key) handleStore("readwrite", (s) => s.delete(key));
+    showNote("Autosave is off. Use Save to keep a copy.");
+    return renderAutosave();
+  }
+  if (guestBlocked() || emptyBlocked()) return renderAutosave();
+  if (autosave && autosave.paused) return resumeAutosave();
+  let handle;
+  try {
+    handle = await window.showSaveFilePicker({
+      suggestedName: planFileName(),
+      types: [{ description: "Splice plan", accept: { "application/json": [PLAN_EXT] } }],
+    });
+  } catch {
+    // Cancelled: stays off.
+    return renderAutosave();
+  }
+  // Older plans may not say when they were made; the key needs it.
+  if (!plan.createdAt) plan.createdAt = new Date().toISOString();
+  autosave = { key: planKey(), handle };
+  handleStore("readwrite", (s) => s.put(handle, autosave.key));
+  await writeAutosave();
+  if (!autosave.error) showNote(`Autosave is on: changes go to ${handle.name}.`);
+});
+
+async function resumeAutosave() {
+  try {
+    const ok = (await autosave.handle.requestPermission({ mode: "readwrite" })) === "granted";
+    if (!ok) return renderAutosave();
+  } catch {
+    return renderAutosave();
+  }
+  autosave.paused = false;
+  await writeAutosave();
+}
+
+// app.js savePlan calls this after every change.
+function scheduleAutosave() {
+  if (!autosave || autosave.paused || autosave.key !== planKey()) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(writeAutosave, AUTOSAVE_DELAY);
+}
+
+async function writeAutosave() {
+  const a = autosave;
+  if (!a || a.paused || !plan || planEmpty()) return;
+  a.saving = true;
+  renderAutosave();
+  try {
+    const out = await a.handle.createWritable();
+    await out.write(planFileText());
+    await out.close();
+    a.savedAt = Date.now();
+    a.error = null;
+  } catch (err) {
+    a.error = (err && err.message) || "The file couldn't be written.";
+    // Permission lapsed (the app was closed): ask again on the next tap.
+    if (err && err.name === "NotAllowedError") {
+      a.paused = true;
+      a.error = null;
+    }
+  }
+  a.saving = false;
+  renderAutosave();
 }
 
 // Installed on a computer (Chrome or Edge), the app can be the program

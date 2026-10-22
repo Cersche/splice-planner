@@ -28,6 +28,7 @@ function printParts() {
 
 document.getElementById("print-plan").addEventListener("click", (e) => {
   e.stopPropagation();
+  if (emptyBlocked()) return;
   closeMenu();
   closePanels();
   selectedId = null;

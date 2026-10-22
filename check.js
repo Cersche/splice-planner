@@ -7,7 +7,7 @@ function checkPlan() {
   const warn = (where, text) => found.push({ level: "warning", where, text });
   const model = buildSpliceModel();
   const start = plan.points[0];
-
+  if (!start) return found;
   if (!plan.paths.length) warn(start.id, `Nothing leaves ${start.name} yet.`);
   if (plan.unassigned.length) {
     warn(start.id, `${plan.unassigned.length} imported home(s) are still on the unassigned list.`);
@@ -216,6 +216,7 @@ function openCheck() {
 
 document.getElementById("check-plan").addEventListener("click", (e) => {
   e.stopPropagation();
+  if (emptyBlocked()) return;
   openCheck();
 });
 document.getElementById("check-close").addEventListener("click", () => {

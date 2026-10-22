@@ -24,13 +24,15 @@ you have signal and it will work offline after that.
    look at and print plans but not change them. Names aren't logins (there's
    no server); they go on what each person adds, on shared files and prints.
    **+ Add a name…** adds one.
-2. Pick where the route starts: **Cabinet** (head end or FDH) or **Other**
-   (handhole, pedestal, vault, manhole, or type your own).
+2. **New plan** opens an empty route. Tap the **Start** card and place the
+   first location: a head end, FDH, handhole, pedestal, vault, manhole, or
+   type your own. Opening a saved plan shows the whole route.
 3. The route sits on a canvas: drag the background or hold the middle mouse
    button to move around (one finger on a phone); scroll the mouse wheel
    (zooms toward the pointer), pinch or use **−** / **+** to zoom, and
    **Fit all** to see the whole job. Shift + scroll moves sideways. The small map in the corner shows
-   where you are; tap it to jump.
+   where you are; tap it to jump. When a card sits under it, it shrinks to
+   the corner (point at it to see it full size).
    Lines are colored by what runs on them: cables red, splitter tails
    blue, terminal tails green, dashed grey where there's no cable yet.
    **Layout** (top bar) picks how the route is shown on this device:
@@ -50,9 +52,19 @@ you have signal and it will work offline after that.
    into place, can't sit on top of each other and can't go more than 4
    cells from what they connect to; **Lock** when done. **Tidy** lays the
    route out left to right again. Where locations sit in the grid is saved
-   with the plan, so everyone sees the same arrangement.
+   with the plan, so everyone sees the same arrangement. Lines find their
+   own way through the gaps: never through or behind a card they don't
+   join, never sharing a stretch with another line, with as few turns as
+   they can; where two cross, one hops over the other.
+   To work on several homes at once, Shift- or Ctrl-click them or
+   Shift-drag a box around them (on a touch screen, tap **Select** and tap
+   or drag). Then **Move** (drag any one; the rest come along), **Feed
+   from…** (one location, and one splitter or terminal for all of them, in
+   address order) or **Remove**.
 4. Tap the **+** beside a location to add the next one after it. It's joined
-   by a path (the line); a cable doesn't have to go on it yet.
+   by a path (the line); a cable doesn't have to go on it yet. A new
+   handhole offers **Add a splice here** (ticked) with the splice case to use.
+   In any dialog, Enter in a box you type in presses its main button.
 5. Tap a line to set its conduit (size, ducts, color, footage) and its cable:
    type (cable, splitter tail, terminal tail), name, size, whether it passes
    through, and which incoming fibers it's spliced to. The line shows only
@@ -85,13 +97,18 @@ you have signal and it will work offline after that.
    mark earlier work as "Existing".
 9. **Import homes** brings in an address list for the whole job. Homes wait
    on the unassigned list until you pick the location that feeds them.
+   Both lists are in order (lots first, Lot 2 before Lot 10, then by street
+   and house number) and have a search box.
 10. **Check plan** lists problems and warnings. Tap one to find it.
-11. **Share plan** saves a `.ffhspl` plan file named with the job, your name
+11. **Save** saves a `.ffhspl` plan file named with the job, your name
     and the date (on a phone it opens the share sheet). The file remembers
     who drafted the plan and who last edited it; opening it shows "From Dave,
     Oct 20". **Open plan** opens `.ffhspl` files and older `.json` ones. With
     the app installed in Chrome or Edge on a computer, double-clicking a
-    `.ffhspl` file can open it in the app.
+    `.ffhspl` file can open it in the app. In Chrome and Edge (and the
+    installed app), **Autosave** beside Save writes the file by itself as
+    you work: pick where it goes once, and the note says when it last
+    saved. After the app reopens, tap the note to resume.
 12. **Print / PDF** prints 11x17 field sheets: a route overview on page 1,
     (a big route is cut into numbered boxes side by side so it stays on one
     sheet; a dashed "See box 2" card shows where a branch continues),
@@ -107,5 +124,5 @@ you have signal and it will work offline after that.
 Nothing asks "Are you sure?": removals happen right away with an **Undo**
 bar at the bottom. **Start over** asks for a second tap.
 
-Plans are saved in the browser as you work. Use **Share plan** to keep a copy
+Plans are saved in the browser as you work. Use **Save** (or Autosave) to keep a copy
 or send it to someone else.

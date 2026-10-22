@@ -121,6 +121,20 @@ function closeForm() {
 
 registerPanel(formPanel, closeForm);
 
+// Enter in a box you type in presses the dialog's main button (Save, Add,
+// Done). Not in a textarea, where Enter starts a new line, and not where
+// a box has its own action for Enter (it calls preventDefault first).
+formPanel.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.defaultPrevented || e.isComposing) return;
+  const t = e.target;
+  // A search box only filters a list; Enter there shouldn't save.
+  if (t.tagName !== "INPUT" || ["checkbox", "radio", "button", "submit", "file", "color", "range", "search"].includes(t.type)) return;
+  const main = [...formFoot.querySelectorAll(".btn.big")].filter((b) => !b.disabled && b.offsetParent).pop();
+  if (!main) return;
+  e.preventDefault();
+  main.click();
+});
+
 // Cancel and Save buttons for the bottom of a form. onSave returns an
 // error message to keep the form open, or nothing when it's done.
 function formButtons(foot, onSave, saveLabel = "Save") {

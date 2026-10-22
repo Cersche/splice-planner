@@ -32,6 +32,7 @@ function closeImport() {
 registerPanel(importPanel, closeImport);
 document.getElementById("import-homes").addEventListener("click", (e) => {
   e.stopPropagation();
+  if (emptyBlocked()) return;
   importHomes();
 });
 
@@ -231,6 +232,7 @@ document.getElementById("import-lot").addEventListener("change", (e) => {
 
 document.getElementById("import-columns-go").addEventListener("click", () => {
   imp.include = {};
+  importSearch.value = "";
   renderPreview();
   showImportStep("fix");
 });
@@ -306,11 +308,45 @@ function previewRows() {
   });
 }
 
+// --- Order and search ---
+// Homes on lots come first, Lot 2 before Lot 10; homes with only an
+// address follow, by street and then house number.
+const naturally = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+
+function addressParts(name) {
+  const m = /^\s*(\d+)\s*([a-z]?)\b[\s,]*(.*)$/i.exec(name || "");
+  return m ? { street: m[3], number: Number(m[1]), suffix: m[2] } : { street: name || "", number: Infinity, suffix: "" };
+}
+
+function homeOrder(a, b) {
+  if (!!a.lot !== !!b.lot) return a.lot ? -1 : 1;
+  if (a.lot) return naturally(a.lot, b.lot) || naturally(a.name, b.name);
+  const x = addressParts(a.name);
+  const y = addressParts(b.name);
+  return naturally(x.street, y.street) || x.number - y.number || naturally(x.suffix, y.suffix) || naturally(a.name, b.name);
+}
+
+function sortHomes(list) {
+  return list.sort(homeOrder);
+}
+
+// Search: every word typed must appear in the address or lot.
+function homeMatches(h, query) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const text = `${h.name} ${h.lot ? lotName(h.lot) : ""}`.toLowerCase();
+  return words.every((w) => text.includes(w));
+}
+
+const importSearch = document.getElementById("import-search");
+importSearch.addEventListener("input", () => renderPreview());
+
 function renderPreview() {
-  const rows = previewRows();
+  const rows = sortHomes(previewRows());
+  const query = importSearch.value.trim();
   const table = document.getElementById("import-preview");
   table.innerHTML = "";
   for (const r of rows) {
+    if (query && !homeMatches(r, query)) continue;
     const tr = document.createElement("tr");
     if (!r.include) tr.className = "skip";
     const tdBox = document.createElement("td");
@@ -340,6 +376,15 @@ function renderPreview() {
   document.getElementById("import-summary").textContent =
     `${rows.length} rows read. ${fixed} cleaned up. ${flagged} need a look (marked in red). ` +
     `Untick any home you don't want.`;
+  if (query) {
+    const shown = table.rows.length;
+    document.getElementById("import-summary").textContent += ` Showing ${shown} of ${rows.length}.`;
+    if (!shown) {
+      const tr = el("tr");
+      tr.append(el("td"), el("td", "muted", `Nothing matches "${query}".`), el("td"));
+      table.append(tr);
+    }
+  }
   const go = document.getElementById("import-go");
   go.textContent = `Add ${count} home${count === 1 ? "" : "s"} to the unassigned list`;
   imp.ready = rows.filter((r) => r.include);
@@ -352,6 +397,7 @@ document.getElementById("import-go").addEventListener("click", () => {
     if (r.lot) home.lot = r.lot;
     plan.unassigned.push(home);
   }
+  sortHomes(plan.unassigned);
   closeImport();
   savePlan();
   openAssign(null);
@@ -383,11 +429,16 @@ function openAssign(fromId) {
     }
     const all = el("label", "toggle");
     const allBox = inputEl("checkbox");
-    all.append(allBox, document.createTextNode("All"));
+    const allText = document.createTextNode("All");
+    all.append(allBox, allText);
+    const search = inputEl("search", "", { placeholder: "Search addresses or lots", "aria-label": "Search the homes", class: "list-search", autocomplete: "off" });
     const listEl = el("div", "preview-wrap");
     const table = el("table", "preview");
     listEl.append(table);
-    body.append(all, listEl);
+    body.append(search, all, listEl);
+    sortHomes(plan.unassigned);
+    const shownHomes = () => plan.unassigned.filter((h) => homeMatches(h, search.value.trim()));
+    search.addEventListener("input", () => render());
 
     const grid = el("div", "form-grid");
     const from = selectEl(feeders.map((p) => ({ value: p.id, label: `${p.name} (${typeLabel(p.type)})` })),
@@ -404,7 +455,14 @@ function openAssign(fromId) {
     let go;
     function render() {
       table.innerHTML = "";
-      for (const h of plan.unassigned) {
+      const shown = shownHomes();
+      allText.textContent = search.value.trim() ? `All ${shown.length} shown` : "All";
+      if (!shown.length) {
+        const tr = el("tr");
+        tr.append(el("td"), el("td", "muted", `Nothing matches "${search.value.trim()}".`), el("td"));
+        table.append(tr);
+      }
+      for (const h of shown) {
         const tr = el("tr");
         const tdBox = el("td");
         const box = inputEl("checkbox");
@@ -438,7 +496,8 @@ function openAssign(fromId) {
     }
 
     function refresh() {
-      allBox.checked = picked.size === plan.unassigned.length;
+      const shown = shownHomes();
+      allBox.checked = shown.length > 0 && shown.every((h) => picked.has(h.id));
       const n = picked.size;
       const hit = splitterFor();
       dsRow.hidden = !hit;
@@ -459,9 +518,12 @@ function openAssign(fromId) {
       }
     }
 
+    // With a search typed, All ticks or unticks only the homes shown.
     allBox.addEventListener("change", () => {
-      picked.clear();
-      if (allBox.checked) for (const h of plan.unassigned) picked.add(h.id);
+      for (const h of shownHomes()) {
+        if (allBox.checked) picked.add(h.id);
+        else picked.delete(h.id);
+      }
       render();
     });
     from.addEventListener("change", refresh);
