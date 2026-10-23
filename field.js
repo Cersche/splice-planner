@@ -10,6 +10,33 @@ const FIELD_STATUS = {
   problem: "Problem",
 };
 const FIELD_NAME_KEY = "splicePlanner.fieldName";
+// Photos are shrunk to this many pixels on the long side and saved as
+// JPEG, about 100 KB each, so a plan file stays easy to send.
+const PHOTO_PX = 1024;
+const PHOTO_QUALITY = 0.6;
+const PHOTOS_MAX = 12;
+
+// A picked photo, shrunk, as a data URL.
+function shrinkPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, PHOTO_PX / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * k);
+      c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL("image/jpeg", PHOTO_QUALITY));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("not an image"));
+    };
+    img.src = url;
+  });
+}
 
 // Who's writing: a planner's name, or the crew member's own.
 function fieldWho(input) {
@@ -26,6 +53,7 @@ function fieldChips(p) {
   const out = [];
   if (f.status) out.push(el("span", `chip field-${f.status}`, FIELD_STATUS[f.status]));
   if (f.notes && f.notes.length) out.push(el("span", "chip field-note", plural(f.notes.length, "note")));
+  if (f.photos && f.photos.length) out.push(el("span", "chip field-note", plural(f.photos.length, "photo")));
   return out;
 }
 
@@ -66,6 +94,61 @@ function renderFieldBox(locId) {
     list.append(el("li", "", `${n.text} (${n.by || "crew"}, ${new Date(n.at).toLocaleString()})`));
   }
   if (list.childNodes.length) box.append(list);
+  // Photos: tap one to see it full size; planners can take one off.
+  const shots = el("div", "field-photos");
+  for (const ph of (f.photos || []).filter((x) => /^data:image\//.test(x.src))) {
+    const fig = el("figure", "");
+    const img = document.createElement("img");
+    img.src = ph.src;
+    img.alt = `Photo by ${ph.by || "crew"}`;
+    img.title = `${ph.by || "crew"}, ${new Date(ph.at).toLocaleString()}`;
+    img.addEventListener("click", () => {
+      const w = window.open();
+      if (!w) return;
+      const big = w.document.createElement("img");
+      big.src = ph.src;
+      big.style.maxWidth = "100%";
+      w.document.body.append(big);
+    });
+    fig.append(img);
+    if (!isGuest()) fig.append(btnEl("×", () => {
+      p.field = { ...f, photos: f.photos.filter((x) => x.id !== ph.id) };
+      savePlan();
+      renderRoute();
+      renderFieldBox(locId);
+    }, "photo-x"));
+    shots.append(fig);
+  }
+  if (shots.childNodes.length) box.append(shots);
+  const pick = inputEl("file", "", { accept: "image/*", multiple: true });
+  pick.addEventListener("change", async () => {
+    const by = fieldWho(name);
+    if (isGuest() && !by) {
+      pick.value = "";
+      err.textContent = "Enter your name, then add the photos.";
+      err.hidden = false;
+      return;
+    }
+    const have = (p.field && p.field.photos) || [];
+    const files = [...pick.files].slice(0, PHOTOS_MAX - have.length);
+    if (files.length < pick.files.length) showNote(`A location holds up to ${PHOTOS_MAX} photos.`);
+    const added = [];
+    for (const file of files) {
+      try {
+        added.push({ id: makeId(), by, at: Date.now(), src: await shrinkPhoto(file) });
+      } catch {
+        showNote(`${file.name} isn't a photo this browser can read.`);
+      }
+    }
+    if (!added.length) return;
+    p.field = { ...(p.field || {}), photos: [...have, ...added] };
+    savePlan();
+    renderRoute();
+    renderFieldBox(locId);
+    showNote(`Added ${plural(added.length, "photo")}.`);
+  });
+  box.append(fieldEl("Add photos", pick));
+
   const note = inputEl("textarea", "", { rows: 2, placeholder: "Add a note: what you found, what changed" });
   box.append(fieldEl("New note", note));
   const name = inputEl("text", readStore(FIELD_NAME_KEY) || "", { placeholder: "Your name" });
@@ -105,6 +188,7 @@ function fieldLines(p) {
   if (f.status) lines.push(`As-built: ${FIELD_STATUS[f.status]}${f.by ? ` (${f.by})` : ""}`);
   if (f.footage) lines.push(`Footage pulled: ${f.footage} ft`);
   if (f.gps) lines.push(`GPS: ${f.gps}`);
+  if (f.photos && f.photos.length) lines.push(`${plural(f.photos.length, "photo")} in the plan file`);
   for (const n of f.notes || []) lines.push(`Note: ${n.text} (${n.by || "crew"}, ${new Date(n.at).toLocaleDateString()})`);
   return lines;
 }
