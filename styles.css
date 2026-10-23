@@ -1779,3 +1779,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 button.cx-slot { padding: 0; cursor: pointer; }
 .cx-slot.sel { outline: 2px solid var(--warn); outline-offset: 1px; }
 .inline-fields { display: flex; flex-wrap: wrap; gap: 12px; margin: 6px 0; }
+
+/* Field notes and as-builts (field.js) */
+.field-box { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.field-box .btn { margin-top: 8px; }
+.field-notes { margin: 8px 0; padding-left: 18px; font-size: 0.9rem; }
+.chip.field-built { background: color-mix(in srgb, var(--ok) 26%, var(--card)); color: #b7ecd2; }
+.chip.field-changed { background: color-mix(in srgb, var(--warn) 26%, var(--card)); color: #f1d68f; }
+.chip.field-problem { background: color-mix(in srgb, #e05656 30%, var(--card)); color: #ffc9c9; }
+.chip.field-note { background: color-mix(in srgb, var(--accent) 20%, var(--card)); color: #bcdcfb; }

@@ -123,7 +123,7 @@ function authorLine(p = plan) {
 const userPicks = document.querySelectorAll("[data-user-pick]");
 
 function renderUserPicks() {
-  const opts = [...userList().map((n) => ({ value: n, label: n })), { value: GUEST, label: "Guest (view and print)" },
+  const opts = [...userList().map((n) => ({ value: n, label: n })), { value: GUEST, label: "Field crew (view, notes, as-builts)" },
     { value: "+", label: "+ Add a name…" }];
   for (const s of userPicks) {
     s.replaceChildren(...selectEl(opts).childNodes);
@@ -222,6 +222,6 @@ function applyUser() {
 // A short reply for something a guest tried to change.
 function guestBlocked() {
   if (!isGuest()) return false;
-  showNote("Guests can look and print. Pick your name at the top to make changes.");
+  showNote("Field crews can look, print and leave notes on a location's sheet. Pick your name at the top to change the plan.");
   return true;
 }

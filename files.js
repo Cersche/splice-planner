@@ -30,8 +30,9 @@ function downloadFile(name, blob) {
 
 // On a phone this opens the share sheet (Messages, Mail, Files ...);
 // elsewhere, or if that isn't allowed, the file downloads.
+// Field crews save too: their notes and as-builts go back in the file.
 document.getElementById("share-plan").addEventListener("click", async () => {
-  if (guestBlocked() || emptyBlocked()) return;
+  if (emptyBlocked()) return;
   savePlan();
   const name = planFileName();
   const blob = new Blob([planFileText()], { type: "application/json" });

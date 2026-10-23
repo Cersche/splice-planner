@@ -683,7 +683,7 @@ function locationPage(model, L, n, total) {
   const sub = [typeLabel(L.type), plan.title || "", closure ? closure.name + (closure.model && closure.model !== closure.name ? ` (${closure.model})` : "") : "",
     hasPhases() ? phaseName(phaseIdx(L)) : ""].filter(Boolean).join(" · ");
   names.append(el("h2", "", L.name), el("div", "loc-sub", sub));
-  const lines = detailLines(L);
+  const lines = [...detailLines(L), ...fieldLines(L)];
   if (lines.length) names.append(el("div", "loc-sub", lines.join(" · ")));
   const meta = el("div", "loc-meta");
   meta.append(blanks(), el("b", "", `Location ${n} of ${total}`));

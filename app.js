@@ -623,6 +623,7 @@ function stopEl(p) {
   // A handhole, pedestal and so on with nothing in it: the cable just passes.
   const holds = (p.equipment || []).some((e) => ["closure", "splitter", "terminal"].includes(e.type));
   if (PASS_TYPES.includes(p.type) && !holds && !through.length) chips.append(el("span", "chip through", "Pass through"));
+  chips.append(...fieldChips(p));
   const pc = phaseChip(p);
   if (pc) chips.prepend(pc);
   if (chips.childNodes.length) card.append(chips);
@@ -694,6 +695,7 @@ function openMenu(id, e) {
     // Guests (crews in the field) go straight to the location's sheet.
     if (p.type !== "nid") return openSpliceSheet(id);
     // At a home: a pointer to the name picker.
+    items.push({ icon: "edit", label: "Field notes and as-built", run: () => openSpliceSheet(id) });
     items.push({ icon: "user", label: "View only: pick your name at the top to change things", run: () => {
       const pick = document.querySelector(".route-header [data-user-pick]");
       if (pick) pick.focus();

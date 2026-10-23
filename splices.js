@@ -330,6 +330,7 @@ function openSpliceSheet(locId) {
   document.getElementById("splice-title").textContent = `Splice sheet: ${L.name}`;
   document.getElementById("splice-print-blocked").hidden = true;
   renderSpliceBody();
+  renderFieldBox(locId);
   splicePanel.hidden = false;
   splicePanel.scrollTop = 0;
   renderRoute();
