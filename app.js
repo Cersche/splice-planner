@@ -817,7 +817,7 @@ function addOtherForm(fromId) {
 // A handhole or pedestal usually holds something, so placing one offers
 // it right away: a splice case (trays drawn as the case will look), a
 // splitter or a terminal, each with its own list of models.
-const EQUIP_FIRST = { handhole: "closure", pedestal: "terminal" };
+const EQUIP_FIRST = { handhole: "closure", pedestal: "splitter" };
 
 function equipFirstForm(type, fromId) {
   const what = typeLabel(type).toLowerCase();
@@ -867,10 +867,20 @@ function equipFirstForm(type, fromId) {
     fromCase();
 
     // Splitter: style and size. Its F2 count fills in by itself.
-    const style = selectEl(templatesFor("splitter").map((t) => ({ value: t.id, label: t.label })), "sp-bare");
+    // In a pedestal that's a CommScope clamshell with a FieldShield tail.
+    const style = selectEl(templatesFor("splitter").map((t) => ({ value: t.id, label: t.label })), type === "pedestal" ? "sp-clamshell" : "sp-bare");
     const ratio = selectEl(SPLITTER_RATIOS.map((r) => ({ value: r, label: r })), "1x8");
-    const splitBits = el("div", "form-grid");
-    splitBits.append(fieldEl("Style", style), fieldEl("Size", ratio));
+    const tail = tailLengthField();
+    const splitGrid = el("div", "form-grid");
+    splitGrid.append(fieldEl("Style", style), fieldEl("Size", ratio));
+    const splitBits = el("div");
+    splitBits.append(splitGrid, tail.el);
+    const syncTail = () => {
+      tail.el.hidden = !templateById(style.value).tails;
+      fillRatios(ratio, templateById(style.value), "1x8");
+    };
+    style.addEventListener("change", syncTail);
+    syncTail();
 
     // Terminal: the model.
     const terminal = selectEl(templatesFor("terminal").map((t) => ({ value: t.id, label: t.label, group: t.group })), "mst-8");
@@ -893,8 +903,10 @@ function equipFirstForm(type, fromId) {
         eq.trays = Math.max(1, Number(trays.value) || 1);
         eq.slots = Number(size.value);
       } else if (kind.value === "splitter") {
-        eq = { id: makeId(), type: "splitter", ratio: ratio.value, style: templateById(style.value).style,
-          name: `Splitter 1 (${ratio.value})`, f2: null, f2Manual: false };
+        const t = templateById(style.value);
+        if (t.tails && !tail.value()) return "Enter the custom tail length in feet.";
+        eq = { id: makeId(), type: "splitter", ratio: ratio.value, style: t.style,
+          name: `Splitter 1 (${ratio.value})`, f2: null, f2Manual: false, ...(t.tails ? { tailFt: tail.value() } : {}) };
       } else if (kind.value === "terminal") {
         const t = templateById(terminal.value);
         eq = fromTemplate(t, t.model);

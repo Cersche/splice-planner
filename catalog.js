@@ -126,12 +126,47 @@ const TEMPLATES = [
   { id: "flexnap-8", kind: "terminal", group: "CommScope FlexNAP", label: "FlexNAP terminal, 8 ports", model: "CommScope FlexNAP 8", cards: 1, card: "Ports", ports: 8 },
   { id: "flexnap-12", kind: "terminal", group: "CommScope FlexNAP", label: "FlexNAP terminal, 12 ports", model: "CommScope FlexNAP 12", cards: 1, card: "Ports", ports: 12 },
 
-  // Splitter styles (ratio picked separately, 1x2 to 1x64)
+  // Splitter styles (ratio picked separately, 1x2 to 1x64). The
+  // clamshell is the usual one in a pedestal: its FieldShield drop tail
+  // comes in set lengths (TAIL_LENGTHS), or a custom one.
+  { id: "sp-clamshell", kind: "splitter", group: "CommScope", label: "CommScope clamshell, FieldShield drop tail", style: "CommScope clamshell", tails: true, ratios: ["1x4", "1x8", "1x12"] },
   { id: "sp-cassette", kind: "splitter", group: "Splitter style", label: "LGX cassette", style: "LGX cassette" },
   { id: "sp-pnp", kind: "splitter", group: "Splitter style", label: "Plug-and-play module (FDH)", style: "Plug-and-play module" },
   { id: "sp-rack", kind: "splitter", group: "Splitter style", label: "Rack mount", style: "Rack mount" },
   { id: "sp-bare", kind: "splitter", group: "Splitter style", label: "Bare / blockless (in a splice case)", style: "Bare" },
 ];
+
+// The sizes a splitter style comes in, keeping the one picked if it's
+// still on the list.
+function fillRatios(select, t, fallback) {
+  const list = (t && t.ratios) || SPLITTER_RATIOS;
+  const keep = list.includes(select.value) ? select.value : list.includes(fallback) ? fallback : list[0];
+  select.replaceChildren(...list.map((r) => new Option(r, r)));
+  select.value = keep;
+}
+
+const TAIL_LENGTHS = [75, 100, 150, 250, 300, 400, 500, 700, 1000];
+
+// Tail length: a stock length, or "Custom" for a number of your own.
+// Returns { el, value() } where value() is feet, or null if not valid.
+function tailLengthField(feet) {
+  const stock = !feet || TAIL_LENGTHS.includes(feet);
+  const pick = selectEl([...TAIL_LENGTHS.map((n) => ({ value: n, label: `${n} ft` })), { value: "custom", label: "Custom…" }],
+    stock ? String(feet || 150) : "custom");
+  const custom = inputEl("number", stock ? "" : feet, { min: 1, max: 5000, placeholder: "ft" });
+  const box = el("div", "inline-fields");
+  box.append(pick, custom);
+  const sync = () => (custom.hidden = pick.value !== "custom");
+  pick.addEventListener("change", sync);
+  sync();
+  return {
+    el: fieldEl("Tail length", box),
+    value: () => {
+      const n = pick.value === "custom" ? Math.round(Number(custom.value)) : Number(pick.value);
+      return n > 0 ? n : null;
+    },
+  };
+}
 
 function templatesFor(kind) {
   return TEMPLATES.filter((t) => t.kind === kind);

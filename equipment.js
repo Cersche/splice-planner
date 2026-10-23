@@ -24,7 +24,7 @@ function equipmentLabel(eq) {
 
 // Short form for the chips on a location card.
 function equipmentChip(eq) {
-  if (eq.type === "splitter") return `${eq.ratio}${eq.f2 ? ` · ${f2Label(eq)}` : ""}`;
+  if (eq.type === "splitter") return `${eq.ratio}${eq.tailFt ? ` · ${eq.tailFt}ft tail` : ""}${eq.f2 ? ` · ${f2Label(eq)}` : ""}`;
   if (hasCards(eq)) return `${eq.name} · ${cardPorts(eq)}p`;
   if (eq.type === "closure") return `${eq.name} · ${eq.trays * eq.slots}sp`;
   return eq.name;
@@ -51,7 +51,7 @@ function openEquipment(locId, startKind) {
       const pic = el("span", "eq-icon");
       pic.append(iconEl((EQ_KINDS[eq.type] || EQ_KINDS.other).icon));
       const title = el("div", "eq-name", eq.name);
-      const sub = el("div", "eq-meta", [eq.model, eq.style, eq.type === "splitter" ? eq.ratio : ""].filter(Boolean).join(" · "));
+      const sub = el("div", "eq-meta", [eq.model, eq.style, eq.type === "splitter" ? eq.ratio : "", eq.tailFt ? `${eq.tailFt} ft tail` : ""].filter(Boolean).join(" · "));
       const text = el("div", "eq-text");
       text.append(title, sub);
       row.append(pic, text);
@@ -156,6 +156,8 @@ function openEquipment(locId, startKind) {
     let nameTouched = false;
     name.addEventListener("input", () => (nameTouched = true));
     const ratio = selectEl(SPLITTER_RATIOS.map((r) => ({ value: r, label: r })), "1x32");
+    const tail = tailLengthField();
+    const tailBox = tail.el;
     const qty = inputEl("number", 1, { min: 1, max: 48 });
     const first = inputEl("number", nextFreeF2(p, { id: null }) || "", { min: 1 });
     // New splitters take the next free F2 fibers unless unlocked.
@@ -188,7 +190,7 @@ function openEquipment(locId, startKind) {
       if (k === "splitter") {
         const g = el("div", "form-grid");
         g.append(fieldEl("Size", ratio), fieldEl("How many", qty), fieldEl("First F2", firstBox));
-        fields.append(g);
+        fields.append(g, tailBox);
         renderFirst();
       } else {
         fields.append(fieldEl("Name", name));
@@ -223,6 +225,8 @@ function openEquipment(locId, startKind) {
       addError.hidden = true;
       const k = kind.value;
       const t = tmpl();
+      tailBox.hidden = !(k === "splitter" && t && t.tails);
+      if (k === "splitter") fillRatios(ratio, t, t && t.ratios ? "1x8" : "1x32");
       picBox.replaceChildren(hardwarePicture(k, t));
       if (t && t.kind === k && !nameTouched && k !== "splitter") name.value = t.model || EQ_KINDS[k].label;
       if (k === "other" && !nameTouched) name.value = "";
@@ -250,10 +254,16 @@ function openEquipment(locId, startKind) {
         const planned = plannedF2();
         if (planned.error) return;
         const t = tmpl();
+        if (t.tails && !tail.value()) {
+          addError.textContent = "Enter the custom tail length in feet.";
+          addError.hidden = false;
+          return;
+        }
         let n = splittersAt(p).length;
         for (let i = 0; i < planned.n; i++) {
           p.equipment.push({ id: makeId(), type: "splitter", ratio: ratio.value, style: t.style,
-            name: `Splitter ${++n} (${ratio.value})`, f2: planned.list[i] || null, f2Manual: firstManual });
+            name: `Splitter ${++n} (${ratio.value})`, f2: planned.list[i] || null, f2Manual: firstManual,
+            ...(t.tails ? { tailFt: tail.value() } : {}) });
         }
         first.value = nextFreeF2(p, { id: null }) || "";
       } else if (k === "other") {
