@@ -2,7 +2,7 @@
 // cached on first visit, and updates are picked up the next time it
 // opens online.
 
-const CACHE = "splice-planner-v20";
+const CACHE = "splice-planner-v21";
 const FILES = [
   "./", "index.html", "styles.css", "ui.js", "users.js", "catalog.js", "app.js", "pan.js", "fold.js", "table.js", "grid.js", "phases.js", "paths.js", "equipment.js", "import.js", "counts.js", "files.js",
   "splices.js", "connect.js", "edits.js", "check.js", "print.js", "manifest.json",
@@ -21,11 +21,12 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
-// Network first so updates arrive; the cache answers when offline.
+// Network first so updates arrive (checked with the server, not the
+// browser's own copy); the cache answers when offline.
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: "no-cache" })
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy));
