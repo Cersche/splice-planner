@@ -1769,7 +1769,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 #splice-body { overflow-x: auto; }
 .field-hint.warn { color: var(--warn); }
 .hint.warn { color: var(--warn); }
-.cx-trays { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
-.cx-tray-chip { padding: 2px 8px; border: 1px solid var(--border-2); border-radius: 6px; font-size: 12px; }
-.cx-tray-chip.empty { opacity: 0.6; border-style: dashed; }
-.cx-tray-chip.over { border-color: var(--warn); color: var(--warn); }
+.cx-trays { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin: 8px 0; }
+.cx-tray-card { border: 1px solid var(--border-2); border-radius: 8px; padding: 6px 8px; background: rgba(255, 255, 255, 0.03); }
+.cx-tray-head { font-size: 12px; margin-bottom: 4px; opacity: 0.85; }
+.cx-tray-slots { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; }
+.cx-slot { aspect-ratio: 1; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.28); background: rgba(0, 0, 0, 0.25); }
+.cx-slot.full { border: 1px solid rgba(0, 0, 0, 0.5); background: var(--border-2); }
+.cx-slot.striped { background-image: repeating-linear-gradient(45deg, transparent 0 2px, #000 2px 3px); }

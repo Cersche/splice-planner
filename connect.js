@@ -370,14 +370,34 @@ function openConnections(locId) {
       if (!incomingCable(locId) && L.id !== plan.points[0].id) {
         info.append(el("p", "hint warn", `No cable reaches ${L.name} yet. You can still look around and set things up here.`));
       }
-      // Every tray in the case, empty ones too, with how full it is.
+      // The case drawn as it sits: each tray with its slots, filled ones
+      // in the fiber's color, empty ones open.
       if (closure) {
-        const used = new Map();
-        for (const ts of slots.values()) used.set(ts.tray, (used.get(ts.tray) || 0) + 1);
+        const at = new Map();
+        for (const [key, ts] of slots) at.set(`${ts.tray}/${ts.slot}`, key);
         const grid = el("div", "cx-trays");
         for (let t = 1; t <= closure.trays; t++) {
-          const n = used.get(t) || 0;
-          grid.append(el("span", "cx-tray-chip mono" + (n ? "" : " empty") + (n > closure.slots ? " over" : ""), `T${t} ${n}/${closure.slots}`));
+          const tray = el("div", "cx-tray-card");
+          const cells = el("div", "cx-tray-slots");
+          let n = 0;
+          for (let sl = 1; sl <= closure.slots; sl++) {
+            const key = at.get(`${t}/${sl}`);
+            const cell = el("span", "cx-slot" + (key ? " full" : ""));
+            if (key) {
+              n++;
+              const [kind, id, sub] = key.split(":");
+              const c = kind === "fiber" && plan.cables.find((x) => x.id === id);
+              const f = c && colorCode(c.fibers)[Number(sub) - 1];
+              if (f) {
+                cell.style.background = f.fiberColor.hex;
+                if (f.fiberColor.striped) cell.classList.add("striped");
+              }
+              cell.title = `Tray ${t} slot ${sl}: ${endpointLabel(key)}`;
+            } else cell.title = `Tray ${t} slot ${sl}: empty`;
+            cells.append(cell);
+          }
+          tray.append(el("div", "cx-tray-head mono", `Tray ${t} · ${n}/${closure.slots}`), cells);
+          grid.append(tray);
         }
         info.append(grid);
       }
