@@ -250,8 +250,12 @@ function openPath(toId) {
     renderName();
     // Sizes from older or imported plans stay on the list.
     const sizes = c && !CABLE_SIZES.includes(c.fibers) ? [...CABLE_SIZES, c.fibers].sort((a, b) => a - b) : CABLE_SIZES;
-    const fibers = selectEl(sizes.map((n) => ({ value: n, label: `${n}F` })),
-      c && !c.through ? c.fibers : toHome ? 1 : 12);
+    // A 1F jumper is offered on paths to or from an FDH or head end.
+    const jumperOk = [from, to].some((x) => x.type === "fdh" || x.type === "headend");
+    const sizeOpts = sizes.map((n) => ({ value: n, label: `${n}F` }));
+    if (jumperOk || (c && c.jumper)) sizeOpts.splice(1, 0, { value: "1j", label: "1F Jumper" });
+    const fibers = selectEl(sizeOpts,
+      c && !c.through ? (c.jumper ? "1j" : c.fibers) : toHome ? 1 : 12);
     newBox.append(fieldEl("Type", kind), fieldEl("Name", nameBox), fieldEl("Size", fibers));
     const phaseSel = phaseSelect(c);
     if (phaseSel) newBox.append(fieldEl("Phase", phaseSel));
@@ -281,7 +285,7 @@ function openPath(toId) {
         fieldEl("Fibers", pickLock), rangesEl);
       fibers.addEventListener("change", () => {
         if (pickMode.value === "pick" && !rangesTouched) {
-          ranges = suggestPicks(model, c, inCable, Number(fibers.value));
+          ranges = suggestPicks(model, c, inCable, parseInt(fibers.value, 10));
           renderRanges();
         }
       });
@@ -294,7 +298,7 @@ function openPath(toId) {
         rangesEl.append(el("p", "hint", "The splice sheet shows what it picked. Unlock to choose fibers yourself."));
         return;
       }
-      if (!ranges) ranges = suggestPicks(model, c, inCable, Number(fibers.value));
+      if (!ranges) ranges = suggestPicks(model, c, inCable, parseInt(fibers.value, 10));
       const outName = name.value.trim() || "this cable";
       ranges.forEach((r, i) => {
         const row = el("div", "range-row");
@@ -310,7 +314,7 @@ function openPath(toId) {
           const outTo = r.outFrom + len;
           info.textContent = len < 0 ? "" :
             `${rangeColors(inCable.fibers, r.inFrom, r.inTo)} → ${outName} #${rangeText(r.outFrom, outTo)}` +
-            ` (${rangeColors(Number(fibers.value), r.outFrom, outTo)})`;
+            ` (${rangeColors(parseInt(fibers.value, 10), r.outFrom, outTo)})`;
         };
         [a, b, o].forEach((x) => x.addEventListener("input", () => {
           rangesTouched = true;
@@ -343,7 +347,7 @@ function openPath(toId) {
         renderRanges();
       }, "btn ghost"));
       rangesEl.append(fiberGrid({
-        inCable, outName, outFibers: Number(fibers.value), taken: fixedInUse(inCable.id, c && c.id),
+        inCable, outName, outFibers: parseInt(fibers.value, 10), taken: fixedInUse(inCable.id, c && c.id),
         getPairs: () => expandPicks(ranges),
         setPairs: (pairs) => {
           ranges = toRanges(pairs);
@@ -438,7 +442,7 @@ function openPath(toId) {
       // A cable starting here.
       const cableName = nameManual ? name.value.trim() : defaultName();
       if (!cableName) return "Name the cable.";
-      const n = Number(fibers.value);
+      const n = parseInt(fibers.value, 10);
       let picks = null;
       if (inCable && pickMode.value === "pick") {
         const problem = checkPicks(ranges || [], inCable, n, cableName, c);
@@ -458,6 +462,8 @@ function openPath(toId) {
       for (const s of spans) {
         s.name = cableName;
         s.fibers = n;
+        if (fibers.value === "1j") s.jumper = true;
+        else delete s.jumper;
       }
       if (kind.value === "cable") delete span.kind;
       else span.kind = kind.value;
