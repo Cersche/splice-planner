@@ -57,53 +57,20 @@
       <img class="splash-logo" src="assets/logo-light.png" alt="Fiber Fast Homes" width="600" height="418">
       <p class="app-name">Splice Planner</p>
       <h1 id="welcome-title">Welcome!</h1>
-      <p class="subtitle">Choose starting location</p>
+      <p class="subtitle">Start a new plan, or open one</p>
       <p class="hint guest-only">Guests can open and print plans. Pick your name above to start a new one.</p>
 
       <div class="start-buttons">
-        <button class="big-btn" data-start="cabinet">
-          <span class="icon-row" aria-hidden="true"><svg class="ic"><use href="#i-headend"/></svg><svg class="ic"><use href="#i-fdh"/></svg></span>
-          Cabinet
-        </button>
-        <button class="big-btn secondary" data-start="other">
-          <span class="icon-row" aria-hidden="true"><svg class="ic"><use href="#i-handhole"/></svg><svg class="ic"><use href="#i-pedestal"/></svg><svg class="ic"><use href="#i-vault"/></svg><svg class="ic"><use href="#i-manhole"/></svg></span>
-          Other
+        <button class="big-btn" data-start="new">
+          <span class="icon-row" aria-hidden="true"><svg class="ic"><use href="#i-headend"/></svg><svg class="ic"><use href="#i-fdh"/></svg><svg class="ic"><use href="#i-handhole"/></svg><svg class="ic"><use href="#i-pedestal"/></svg></span>
+          New plan
+          <small>Place a cabinet, handhole or anything else first</small>
         </button>
       </div>
 
       <button class="btn ghost open-saved" data-open-plan>Open a saved plan</button>
       <button class="btn ghost resume-plan" id="resume-plan" hidden>Pick up where you left off: <span></span></button>
 
-      <form id="cabinet-form" class="other-form" hidden>
-        <label for="cabinet-kind">What kind of cabinet?</label>
-        <select id="cabinet-kind" class="big-select">
-          <option value="headend">Head end (OLT shelves, patch panels)</option>
-          <option value="fdh">FDH (splitter modules, feeder and distribution panels)</option>
-        </select>
-        <div class="row">
-          <button type="button" class="btn ghost" id="cabinet-cancel">Cancel</button>
-          <button type="submit" class="btn">Start here</button>
-        </div>
-      </form>
-
-      <form id="other-form" class="other-form" hidden>
-        <label for="other-kind">What is the starting point?</label>
-        <select id="other-kind" class="big-select">
-          <option value="handhole">Handhole</option>
-          <option value="pedestal">Pedestal</option>
-          <option value="vault">Vault</option>
-          <option value="manhole">Manhole</option>
-          <option value="other">Other</option>
-        </select>
-        <div id="other-name-row" hidden>
-          <label for="other-name">Type what it is</label>
-          <input id="other-name" type="text" placeholder="e.g. Building MPOE" autocomplete="off">
-        </div>
-        <div class="row">
-          <button type="button" class="btn ghost" id="other-cancel">Cancel</button>
-          <button type="submit" class="btn">Start here</button>
-        </div>
-      </form>
     </section>
 
     <!-- Route: point-to-point tree that reads left to right -->
@@ -126,7 +93,8 @@
           <button class="btn ghost edit-only" id="import-homes"><svg class="ic"><use href="#i-homes"/></svg> Import homes</button>
           <button class="btn ghost" id="unassigned-homes" hidden></button>
           <button class="btn ghost" id="check-plan"><svg class="ic"><use href="#i-info"/></svg> Check plan <span id="check-badge" class="badge" hidden></span></button>
-          <button class="btn ghost edit-only" id="share-plan" title="Save a plan file to keep or send"><svg class="ic"><use href="#i-share"/></svg> Share plan</button>
+          <button class="btn ghost edit-only" id="share-plan" title="Save the plan as a file to keep or send"><svg class="ic"><use href="#i-share"/></svg> Save</button>
+          <label class="autosave edit-only" id="autosave" hidden><input type="checkbox" id="autosave-on" role="switch"> <span>Autosave</span> <small id="autosave-note" class="autosave-note"></small></label>
           <button class="btn ghost" data-open-plan>Open plan</button>
         </div>
         <button class="btn print-btn" id="print-plan"><svg class="ic"><use href="#i-sheet"/></svg> Print / PDF</button>
@@ -143,6 +111,7 @@
           <button type="button" class="zoom-btn fit" id="zoom-fit" title="Fit the whole route">Fit all</button>
           <button type="button" class="zoom-btn fit" id="grid-lock" hidden></button>
           <button type="button" class="zoom-btn fit" id="grid-tidy" title="Lay the route out left to right again" hidden>Tidy</button>
+          <button type="button" class="zoom-btn fit" id="grid-select" hidden>Select</button>
           <button type="button" class="zoom-btn fit" id="fold-all" title="Tuck every home and tail terminal back into its location">Fold all</button>
         </div>
         <canvas id="minimap" class="minimap" width="180" height="110" aria-label="Overview: tap to jump"></canvas>
@@ -198,6 +167,7 @@
             <label class="toggle"><input type="checkbox" data-fix="dupes" checked> Skip duplicate addresses</label>
           </div>
           <p id="import-summary" class="import-summary"></p>
+          <input type="search" id="import-search" class="list-search" placeholder="Search addresses or lots" autocomplete="off" spellcheck="false" aria-label="Search the addresses">
           <div class="preview-wrap">
             <table id="import-preview" class="preview"></table>
           </div>

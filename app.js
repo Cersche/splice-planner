@@ -9,11 +9,12 @@ const STORAGE_KEY = "splicePlanner.plan";
 let plan = null;
 let draft = migratePlan(loadPlan());
 
-function newPlan(startPoint) {
+// A new plan starts empty: the first location placed is the start.
+function newPlan() {
   return {
     createdAt: new Date().toISOString(),
     // Every location on the route; the first is the start.
-    points: [startPoint],
+    points: [],
     // Paths join each location to the one feeding it: the lines on the
     // route. A path can hold conduit details.
     paths: [],
@@ -73,6 +74,8 @@ function savePlan() {
   } catch {
     // Storage unavailable (private window, etc.); the app still works in memory.
   }
+  // The plan file too, when Autosave is on (files.js).
+  if (plan && typeof scheduleAutosave === "function") scheduleAutosave();
 }
 
 // --- Screens ---
@@ -88,6 +91,7 @@ function show(name) {
   if (name === "route") draft = null;
   if (name === "splash") renderResume();
   if (name === "route") {
+    if (typeof syncAutosave === "function") syncAutosave();
     renderRoute();
     // A fresh view: the whole route if it fits readably, else the start.
     requestAnimationFrame(() => startView());
@@ -96,67 +100,25 @@ function show(name) {
 
 // --- Splash ---
 
-const otherForm = document.getElementById("other-form");
-const otherName = document.getElementById("other-name");
-const otherKind = document.getElementById("other-kind");
-const otherNameRow = document.getElementById("other-name-row");
-
-// The text box is only needed when the dropdown says Other.
-otherKind.addEventListener("change", () => {
-  otherNameRow.hidden = otherKind.value !== "other";
-  if (!otherNameRow.hidden) otherName.focus();
-});
-
-const cabinetForm = document.getElementById("cabinet-form");
-const cabinetKind = document.getElementById("cabinet-kind");
-
-// Each start button opens its own short form; only one shows at a time.
-document.querySelectorAll("[data-start]").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const other = btn.dataset.start === "other";
-    otherForm.hidden = !other;
-    cabinetForm.hidden = other;
-    (other ? otherKind : cabinetKind).focus();
-  });
-});
-
-cabinetForm.addEventListener("submit", (e) => {
-  e.preventDefault();
-  startRoute({ type: cabinetKind.value, label: typeLabel(cabinetKind.value) });
-});
-
-function cancelCabinet() {
-  cabinetForm.hidden = true;
-}
-
-document.getElementById("cabinet-cancel").addEventListener("click", cancelCabinet);
-cabinetForm.prepend(xButton(cancelCabinet));
-
-otherForm.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const type = otherKind.value;
-  if (type !== "other") return startRoute({ type, label: typeLabel(type) });
-  const label = otherName.value.trim();
-  if (!label) return otherName.focus();
-  startRoute({ type: "other", label });
-});
-
-function cancelOther() {
-  otherForm.hidden = true;
-  otherName.value = "";
-  otherKind.value = "handhole";
-  otherNameRow.hidden = true;
-}
-
-document.getElementById("other-cancel").addEventListener("click", cancelOther);
-otherForm.prepend(xButton(cancelOther));
-
-function startRoute({ type, label }) {
+// New plan opens an empty route; the first thing placed (a cabinet, a
+// handhole or anything else) becomes the start.
+document.querySelector('[data-start="new"]').addEventListener("click", () => {
   if (guestBlocked()) return;
-  plan = newPlan({ id: makeId(), type, label, name: label, equipment: [] });
+  plan = newPlan();
   resetEditBaseline();
   savePlan();
   show("route");
+});
+
+function planEmpty() {
+  return !!plan && !plan.points.length;
+}
+
+// Header actions that need a route say so on an empty plan.
+function emptyBlocked() {
+  if (!planEmpty()) return false;
+  showNote("Place the first location to start the route.");
+  return true;
 }
 
 // --- Fiber color code (TIA-598) ---
@@ -289,8 +251,6 @@ backBtn.addEventListener("click", () => {
   savePlan();
   closeMenu();
   closePanels();
-  otherForm.hidden = true;
-  otherName.value = "";
   show("splash");
 });
 
@@ -391,6 +351,7 @@ function autoName(type) {
 let routeModel = null;
 
 function renderRoute() {
+  if (planEmpty()) return renderEmptyRoute();
   routeModel = buildSpliceModel();
   // The Table layout (table.js) stands in for the drawing.
   const table = layoutNow() === "table";
@@ -413,6 +374,47 @@ function renderRoute() {
   renderGridButtons();
   updateUnassignedButton();
   renderHeader();
+}
+
+// An empty plan: one card to place the start.
+const START_TYPES = ["headend", "fdh", "handhole", "pedestal", "vault", "manhole"];
+
+function renderEmptyRoute() {
+  routeModel = null;
+  routeView.hidden = false;
+  routeTable.hidden = true;
+  tree.innerHTML = "";
+  const card = el("button", "stop start empty-start");
+  card.type = "button";
+  card.append(el("span", "badge", "+"), el("span", "type", "Start"), el("span", "name", "Place the first location"),
+    el("span", "lot", "A cabinet, handhole or anything else"));
+  card.addEventListener("click", (e) => openStartMenu(e));
+  tree.append(card);
+  minimap.hidden = true;
+  renderLayoutPick();
+  renderGridButtons();
+  updateUnassignedButton();
+  renderHeader();
+}
+
+function openStartMenu(e) {
+  e.stopPropagation();
+  if (guestBlocked()) return;
+  closePanels();
+  const items = START_TYPES.map((t) => ({ icon: LOC_META[t].icon, label: typeLabel(t), run: () => {
+    if (t === "handhole") return handholeForm(null);
+    placeStart(t, typeLabel(t));
+  } }));
+  items.push({ icon: "pin", label: "Other…", run: () => addOtherForm(null) });
+  openPopup("Where does the route begin?", items, e, "Place the first location");
+}
+
+function placeStart(type, name, extra) {
+  const stop = { id: makeId(), type, label: typeLabel(type), name, equipment: [], ...extra };
+  plan.points.push(stop);
+  finish();
+  requestAnimationFrame(() => startView());
+  return stop;
 }
 
 function branchEl(p) {
@@ -735,6 +737,7 @@ function openAddMenu(fromId, e) {
   closePanels();
   selectedId = fromId;
   const items = ADD_TYPES.map((t) => ({ icon: LOC_META[t].icon, label: typeLabel(t), run: () => {
+    if (t === "handhole") return handholeForm(fromId);
     addLocation(fromId, t, autoName(t));
     finish();
   } }));
@@ -788,15 +791,43 @@ function addLocation(fromId, type, name, extra) {
   return stop;
 }
 
+// fromId null places the start of an empty plan.
 function addOtherForm(fromId) {
-  openForm(`Add a location after ${point(fromId).name}`, (body, foot) => {
+  openForm(fromId ? `Add a location after ${point(fromId).name}` : "Place the first location", (body, foot) => {
     const name = inputEl("text", "", { placeholder: "e.g. Building MPOE" });
     body.append(fieldEl("What is it?", name));
     formButtons(foot, () => {
       if (!name.value.trim()) return "Type what the location is.";
+      if (!fromId) return void placeStart("other", name.value.trim());
       addLocation(fromId, "other", name.value.trim());
       finish();
     }, "Add");
+  });
+}
+
+// A handhole usually holds a splice, so placing one offers the splice
+// case right away (ticked).
+function handholeForm(fromId) {
+  const closures = templatesFor("closure");
+  openForm(fromId ? `Add a handhole after ${point(fromId).name}` : "Place the first location: a handhole", (body, foot) => {
+    const name = inputEl("text", fromId ? autoName("handhole") : typeLabel("handhole"));
+    const spliceRow = el("label", "toggle");
+    const splice = inputEl("checkbox");
+    splice.checked = true;
+    spliceRow.append(splice, document.createTextNode("Add a splice here"));
+    const template = selectEl(closures.map((t) => ({ value: t.id, label: t.label, group: t.group })));
+    const templateRow = fieldEl("Splice case", template);
+    splice.addEventListener("change", () => (templateRow.hidden = !splice.checked));
+    body.append(fieldEl("Name", name), spliceRow, templateRow);
+    formButtons(foot, () => {
+      if (!name.value.trim()) return "Enter a name.";
+      const t = closures.find((x) => x.id === template.value);
+      const extra = splice.checked && t ? { equipment: [fromTemplate(t, t.model)] } : {};
+      if (!fromId) return void placeStart("handhole", name.value.trim(), extra);
+      addLocation(fromId, "handhole", name.value.trim(), extra);
+      finish();
+    }, "Add");
+    name.select();
   });
 }
 

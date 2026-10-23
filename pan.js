@@ -143,7 +143,7 @@ let gesture = null;
 let swallowClick = false;
 
 function isControl(t) {
-  return t.closest("input, select, textarea, .zoom-bar, .minimap");
+  return t.closest("input, select, textarea, .zoom-bar, .minimap, .pick-bar");
 }
 
 routeView.addEventListener("pointerdown", (e) => {
@@ -278,9 +278,18 @@ function drawMinimap() {
   const ox = 4;
   const oy = 4;
   const t = tree.getBoundingClientRect();
+  // The map's corner at full size; it shrinks out of the way while a
+  // card or cable label sits under it (it grows back on hover).
+  const vb = routeView.getBoundingClientRect();
+  const small = matchMedia("(max-width: 640px)").matches;
+  const zone = { r: vb.right - 12, b: vb.bottom - 12, l: vb.right - 12 - (small ? 120 : 180), t: vb.bottom - 12 - (small ? 74 : 110) };
+  const under = (r) => r.right > zone.l && r.left < zone.r && r.bottom > zone.t && r.top < zone.b;
+  let covered = false;
+  for (const s of tree.querySelectorAll(".grid-label, .cable .line, .fan-drop")) if (!covered && under(s.getBoundingClientRect())) covered = true;
   ctx.fillStyle = "#3f8be0";
   for (const s of tree.querySelectorAll(".stop")) {
     const r = s.getBoundingClientRect();
+    if (!covered && under(r)) covered = true;
     ctx.fillStyle = getComputedStyle(s).getPropertyValue("--c") || "#8796a6";
     ctx.fillRect(ox + ((r.left - t.left) / view.z) * minimapScale, oy + ((r.top - t.top) / view.z) * minimapScale,
       Math.max(2, (r.width / view.z) * minimapScale), Math.max(2, (r.height / view.z) * minimapScale));
@@ -290,6 +299,7 @@ function drawMinimap() {
   ctx.lineWidth = 1.5;
   ctx.strokeRect(ox + (-view.x / view.z) * minimapScale, oy + (-view.y / view.z) * minimapScale,
     (vw / view.z) * minimapScale, (vh / view.z) * minimapScale);
+  minimap.classList.toggle("tucked", covered);
 }
 
 function minimapJump(e) {

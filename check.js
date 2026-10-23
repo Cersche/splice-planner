@@ -7,12 +7,14 @@ function checkPlan() {
   const warn = (where, text) => found.push({ level: "warning", where, text });
   const model = buildSpliceModel();
   const start = plan.points[0];
-
+  if (!start) return found;
   if (!plan.paths.length) warn(start.id, `Nothing leaves ${start.name} yet.`);
   if (plan.unassigned.length) {
     warn(start.id, `${plan.unassigned.length} imported home(s) are still on the unassigned list.`);
   }
 
+  // Each shared DS port is reported once, not once per home on it.
+  const clashed = new Set();
   for (const p of plan.points) {
     const out = childCables(p.id);
     const arriving = incomingCable(p.id);
@@ -138,8 +140,13 @@ function checkPlan() {
         if (!s || p.ds.splitterId !== s.id) problem(p.id, `${p.name} has a DS count on a splitter that no longer feeds it.`);
         else if (p.ds.port > splitterPorts(s)) problem(p.id, `${p.name} is on DS ${p.ds.port}, but ${s.name} only has ${splitterPorts(s)} ports.`);
         else {
-          const other = usedPorts(s, p.id).get(p.ds.port);
-          if (other) problem(p.id, `${p.name} and ${other.name} are both on DS ${p.ds.port} of ${s.name}.`);
+          const key = s.id + ":" + p.ds.port;
+          const sharing = plan.points.filter((h) => h.type === "nid" && h.ds && h.ds.splitterId === s.id && h.ds.port === p.ds.port);
+          if (sharing.length > 1 && !clashed.has(key)) {
+            clashed.add(key);
+            const names = sharing.slice(0, 3).map((h) => h.name).join(", ") + (sharing.length > 3 ? ` and ${sharing.length - 3} more` : "");
+            problem(p.id, `${sharing.length} homes are on DS ${p.ds.port} of ${s.name}: ${names}.`);
+          }
         }
       }
     }
@@ -224,6 +231,7 @@ function openCheck() {
 
 document.getElementById("check-plan").addEventListener("click", (e) => {
   e.stopPropagation();
+  if (emptyBlocked()) return;
   openCheck();
 });
 document.getElementById("check-close").addEventListener("click", () => {
