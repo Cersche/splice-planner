@@ -365,9 +365,22 @@ function openConnections(locId) {
       const lines = [];
       if (closure) lines.push(`${closure.name}: ${closure.trays} trays x ${closure.slots} splices.`);
       for (const t of through) lines.push(`${t.name} ${THROUGH_LABELS[t.through]} here (not spliced).`);
-      if (!left.length && !right.length) lines.push("Nothing to connect yet. Add a cable, splitter or equipment here first.");
       lines.push("Drag from the left to the right to connect, or tap one end and then the other. Tap a line or × to take it apart.");
       for (const l of lines) info.append(el("p", "hint", l));
+      if (!incomingCable(locId) && L.id !== plan.points[0].id) {
+        info.append(el("p", "hint warn", `No cable reaches ${L.name} yet. You can still look around and set things up here.`));
+      }
+      // Every tray in the case, empty ones too, with how full it is.
+      if (closure) {
+        const used = new Map();
+        for (const ts of slots.values()) used.set(ts.tray, (used.get(ts.tray) || 0) + 1);
+        const grid = el("div", "cx-trays");
+        for (let t = 1; t <= closure.trays; t++) {
+          const n = used.get(t) || 0;
+          grid.append(el("span", "cx-tray-chip mono" + (n ? "" : " empty") + (n > closure.slots ? " over" : ""), `T${t} ${n}/${closure.slots}`));
+        }
+        info.append(grid);
+      }
 
       tools.innerHTML = "";
       tools.append(btnEl("Fill gaps from free fibers", () => {

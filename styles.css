@@ -1768,3 +1768,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 
 #splice-body { overflow-x: auto; }
 .field-hint.warn { color: var(--warn); }
+.hint.warn { color: var(--warn); }
+.cx-trays { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.cx-tray-chip { padding: 2px 8px; border: 1px solid var(--border-2); border-radius: 6px; font-size: 12px; }
+.cx-tray-chip.empty { opacity: 0.6; border-style: dashed; }
+.cx-tray-chip.over { border-color: var(--warn); color: var(--warn); }
