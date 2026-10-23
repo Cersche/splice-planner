@@ -702,7 +702,7 @@ routeView.addEventListener("pointerdown", (e) => {
   e.stopImmediatePropagation();
   const p = point(cellEl.dataset.id);
   // A picked home brings the other picked homes along.
-  const group = gridPicked.has(p.id) && gridPicked.size > 1 ? pickedHomes() : [p];
+  const group = gridPicked.has(p.id) && gridPicked.size > 1 ? pickedLocs() : [p];
   const groupEls = group.map((m) => tree.querySelector(`.grid-cell[data-id="${CSS.escape(m.id)}"]`)).filter(Boolean);
   gridDrag = { p, cellEl, group, groupEls, x0: e.clientX, y0: e.clientY, moved: false, target: null, ghost: null };
   routeView.setPointerCapture(e.pointerId);
@@ -796,7 +796,12 @@ routeView.append(pickBar);
 pickBar.addEventListener("click", (e) => e.stopPropagation());
 
 function pickedHomes() {
-  return plan ? plan.points.filter((p) => gridPicked.has(p.id) && p.type === "nid") : [];
+  return pickedLocs().filter((p) => p.type === "nid");
+}
+
+// Anything but the start can be picked.
+function pickedLocs() {
+  return plan ? plan.points.filter((p) => gridPicked.has(p.id) && p.id !== plan.points[0].id) : [];
 }
 
 function renderPicks() {
@@ -808,27 +813,29 @@ function renderPicks() {
   }
   gridSelectBtn.classList.toggle("on", gridSelecting);
   gridSelectBtn.textContent = gridSelecting ? "Done" : "Select";
-  gridSelectBtn.title = gridSelecting ? "Stop picking homes" : "Pick several homes: tap them or drag a box around them";
+  gridSelectBtn.title = gridSelecting ? "Stop picking" : "Pick several locations: tap them or drag a box around them";
   routeView.classList.toggle("selecting", gridSelecting);
+  const picked = pickedLocs();
   const homes = pickedHomes();
-  for (const id of [...gridPicked]) if (!homes.some((h) => h.id === id)) gridPicked.delete(id);
+  for (const id of [...gridPicked]) if (!picked.some((h) => h.id === id)) gridPicked.delete(id);
   for (const cell of tree.querySelectorAll(".grid-cell")) cell.classList.toggle("picked", gridPicked.has(cell.dataset.id));
-  pickBar.hidden = !homes.length && !gridSelecting;
+  pickBar.hidden = !picked.length && !gridSelecting;
   pickBar.innerHTML = "";
   if (pickBar.hidden) return;
-  if (!homes.length) {
-    pickBar.append(el("span", "pick-text", "Tap homes or drag a box around them."));
+  if (!picked.length) {
+    pickBar.append(el("span", "pick-text", "Tap locations or drag a box around them."));
     return;
   }
-  pickBar.append(el("span", "pick-text", `${homes.length} home${homes.length === 1 ? "" : "s"} picked`),
+  const allHomes = homes.length === picked.length;
+  pickBar.append(el("span", "pick-text", allHomes ? `${plural(homes.length, "home")} picked` : `${plural(picked.length, "location")} picked`),
     btnEl("Move", () => {
       if (!gridUnlocked) {
         gridUnlocked = true;
         renderRoute();
       }
-      showNote("Drag any picked home: the others move with it. Tap Lock when you're done.");
+      showNote("Drag any picked location: the others move with it. Tap Lock when you're done.");
     }, "btn ghost small"),
-    btnEl("Feed from…", () => openFeedPicked(), "btn ghost small"),
+    ...(allHomes ? [btnEl("Feed from…", () => openFeedPicked(), "btn ghost small")] : []),
     btnEl("Remove", () => removePicked(), "btn ghost small danger"),
     btnEl("Clear", () => {
       gridPicked.clear();
@@ -848,7 +855,7 @@ gridSelectBtn.addEventListener("click", (e) => {
 function togglePick(id) {
   const p = point(id);
   if (!p) return;
-  if (p.type !== "nid") return showNote("Only homes can be picked together.");
+  if (id === plan.points[0].id) return showNote("The start can't be picked.");
   if (gridPicked.has(id)) gridPicked.delete(id);
   else gridPicked.add(id);
   closeMenu();
@@ -907,7 +914,7 @@ function endLasso(e) {
   if (r.r - r.l < 4 && r.b - r.t < 4) return;
   swallowClick = true;
   if (e.type === "pointercancel") return;
-  for (const card of tree.querySelectorAll(".grid-cell .stop.nid")) {
+  for (const card of tree.querySelectorAll(".grid-cell .stop:not(.start)")) {
     const c = card.getBoundingClientRect();
     if (c.right > r.l && c.left < r.r && c.bottom > r.t && c.top < r.b) gridPicked.add(card.dataset.id);
   }
@@ -999,20 +1006,31 @@ function openFeedPicked() {
   });
 }
 
+// Remove the picked locations, and everything fed from them, once the
+// list has been checked.
 function removePicked() {
-  const homes = pickedHomes();
+  const picked = pickedLocs();
   const doomed = new Set();
   (function collect(ids) {
     for (const id of ids) {
       doomed.add(id);
       collect(childPaths(id).map((x) => x.to));
     }
-  })(homes.map((h) => h.id));
-  gridPicked.clear();
-  withUndo(`Removed ${homes.length} home${homes.length === 1 ? "" : "s"}.`, () => {
-    plan.points = plan.points.filter((x) => !doomed.has(x.id));
-    plan.paths = plan.paths.filter((x) => !doomed.has(x.to));
-    plan.cables = plan.cables.filter((c) => !doomed.has(c.to));
-    plan.xconnects = plan.xconnects.filter((x) => !doomed.has(x.at));
+  })(picked.map((h) => h.id));
+  const extra = doomed.size - picked.length;
+  const what = picked.every((p) => p.type === "nid") ? plural(picked.length, "home") : plural(picked.length, "location");
+  openForm(`Remove ${what}?`, (body, foot) => {
+    body.append(el("p", "", picked.map((p) => p.name).join(", ")));
+    if (extra) body.append(el("p", "warn", `${plural(extra, "more location")} fed from them will go too.`));
+    formButtons(foot, () => {
+      gridPicked.clear();
+      finish();
+      withUndo(`Removed ${what}${extra ? ` and ${plural(extra, "location")} fed from them` : ""}.`, () => {
+        plan.points = plan.points.filter((x) => !doomed.has(x.id));
+        plan.paths = plan.paths.filter((x) => !doomed.has(x.to));
+        plan.cables = plan.cables.filter((c) => !doomed.has(c.to));
+        plan.xconnects = plan.xconnects.filter((x) => !doomed.has(x.at));
+      });
+    }, "Remove");
   });
 }

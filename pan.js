@@ -51,23 +51,27 @@ function zoomCenter(factor) {
 }
 
 // Adding or removing locations moves cards around inside the route;
-// the canvas follows so the card in hand (or the start) stays put.
+// the canvas follows so the card in hand (or the start) stays put. The
+// card in hand may be the one just removed, so every card's spot is
+// kept and the first one still there lines the view back up.
 function rememberAnchor() {
   if (screens.route.hidden) return null;
-  const card = tree.querySelector(".stop.selected") || tree.querySelector(".stop.start");
-  if (!card) return null;
-  const r = card.getBoundingClientRect();
-  return { id: card.dataset.id, x: r.left, y: r.top };
+  const cards = [tree.querySelector(".stop.selected"), tree.querySelector(".stop.start"), ...tree.querySelectorAll(".stop[data-id]")];
+  return cards.filter((c) => c && c.dataset.id).map((c) => {
+    const r = c.getBoundingClientRect();
+    return { id: c.dataset.id, x: r.left, y: r.top };
+  });
 }
 
-function restoreAnchor(a) {
-  if (!a) return;
-  const card = tree.querySelector(`.stop[data-id="${CSS.escape(a.id)}"]`) || tree.querySelector(".stop.start");
-  if (!card) return;
-  const r = card.getBoundingClientRect();
-  view.x += a.x - r.left;
-  view.y += a.y - r.top;
-  applyView();
+function restoreAnchor(list) {
+  for (const a of list || []) {
+    const card = tree.querySelector(`.stop[data-id="${CSS.escape(a.id)}"]`);
+    if (!card) continue;
+    const r = card.getBoundingClientRect();
+    view.x += a.x - r.left;
+    view.y += a.y - r.top;
+    return applyView();
+  }
 }
 
 function fitAll() {
