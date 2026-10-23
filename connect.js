@@ -288,18 +288,46 @@ function closureAt(L) {
   return (L.equipment || []).find((e) => e.type === "closure");
 }
 
+// Splices per tray the user can pick for a case.
+const TRAY_SIZES = [24, 36, 48, 72, 96, 144];
+
+// The cable tube a splice key belongs to, so a tube can stay in one tray.
+function tubeGroup(key) {
+  const [kind, id, sub] = key.split(":");
+  if (kind !== "fiber") return null;
+  const c = plan.cables.find((x) => x.id === id);
+  const f = c && colorCode(c.fibers)[Number(sub) - 1];
+  return f ? `${id}:${f.tube}` : null;
+}
+
 function traySlots(L, keys) {
   const out = new Map();
   const set = L.trays || {};
   const closure = closureAt(L);
   const taken = new Set(Object.values(set).map((t) => `${t.tray}/${t.slot}`));
+  // Splices left to place in each tube, so a tube that fits in a tray
+  // starts a fresh tray rather than jumping across two.
+  const left = new Map();
+  for (const key of keys) {
+    const g = !set[key] && tubeGroup(key);
+    if (g) left.set(g, (left.get(g) || 0) + 1);
+  }
   let i = 0;
+  let last = null;
   for (const key of keys) {
     if (set[key]) {
       out.set(key, set[key]);
       continue;
     }
     if (!closure) continue;
+    const g = tubeGroup(key);
+    if (g && g !== last) {
+      const room = closure.slots - (i % closure.slots);
+      const need = left.get(g);
+      if (need > room && need <= closure.slots) i += room;
+    }
+    last = g;
+    if (g) left.set(g, left.get(g) - 1);
     let pos;
     do {
       pos = { tray: Math.floor(i / closure.slots) + 1, slot: (i % closure.slots) + 1 };

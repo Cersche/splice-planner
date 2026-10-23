@@ -1726,3 +1726,4 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .sheet-preview .loc-check { overflow-x: auto; }
 
 #splice-body { overflow-x: auto; }
+.field-hint.warn { color: var(--warn); }
