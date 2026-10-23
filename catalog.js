@@ -64,7 +64,9 @@ function kindsFor(p) {
 // picked separately.
 
 const TEMPLATES = [
-  // OLTs and shelves
+  // OLTs and shelves. Our standard shelves come first.
+  { id: "std-e7-xg801", kind: "shelf", group: "Standard", label: "Calix E7-2, XG801 (standard)", model: "Calix E7-2", cards: 2, card: "XG801", ports: 8, port: "PON" },
+  { id: "std-e7-xg402", kind: "shelf", group: "Standard", label: "Calix E7-2, XG402 (standard)", model: "Calix E7-2", cards: 2, card: "XG402", ports: 4, port: "PON" },
   { id: "e7-gpon8", kind: "shelf", group: "Calix", label: "Calix E7-2, GPON-8 cards", model: "Calix E7-2", cards: 2, card: "GPON-8", ports: 8, port: "PON" },
   { id: "e7-gpon8r2", kind: "shelf", group: "Calix", label: "Calix E7-2, GPON-8 r2 cards", model: "Calix E7-2", cards: 2, card: "GPON-8 r2", ports: 8, port: "PON" },
   { id: "e7-xg801", kind: "shelf", group: "Calix", label: "Calix E7-2, XG801 cards", model: "Calix E7-2", cards: 2, card: "XG801", ports: 8, port: "PON" },

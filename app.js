@@ -478,7 +478,7 @@ function fanEl(paths) {
     label.type = "button";
     label.title = `Drop to ${point(path.to).name}`;
     label.append(el("span", "cable-name" + (c ? "" : " muted"), c ? c.name : "No drop"));
-    if (c) label.append(el("span", "cable-size", `${c.fibers}F` + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
+    if (c) label.append(el("span", "cable-size", `${c.fibers}F` + (c.jumper ? " jumper" : "") + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
     label.addEventListener("click", (e) => {
       e.stopPropagation();
       openPath(path.to);

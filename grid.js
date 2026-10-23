@@ -243,7 +243,7 @@ function drawGridLines() {
     label.title = `${a.name} → ${b.name}`;
     if (c) {
       label.append(el("span", "cable-name", c.name || "Cable"),
-        el("span", "cable-size", `${c.fibers}F` + (c.through ? " · continued" : "") + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
+        el("span", "cable-size", `${c.fibers}F` + (c.jumper ? " jumper" : "") + (c.through ? " · continued" : "") + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
     } else label.append(el("span", "cable-name muted", b.type === "nid" ? "No drop" : "No cable"));
     labels.push(label);
   }
