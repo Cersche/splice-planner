@@ -403,7 +403,7 @@ function openStartMenu(e) {
   if (guestBlocked()) return;
   closePanels();
   const items = START_TYPES.map((t) => ({ icon: LOC_META[t].icon, label: typeLabel(t), run: () => {
-    if (t === "handhole") return handholeForm(null);
+    if (EQUIP_FIRST[t]) return equipFirstForm(t, null);
     placeStart(t, typeLabel(t));
   } }));
   items.push({ icon: "pin", label: "Other…", run: () => addOtherForm(null) });
@@ -620,8 +620,9 @@ function stopEl(p) {
   for (const c of through) {
     chips.append(el("span", "chip through", `${c.name} ${THROUGH_LABELS[c.through]}`));
   }
-  // A handhole, pedestal and so on with no splice case: the cable just passes.
-  if (PASS_TYPES.includes(p.type) && !closureAt(p) && !through.length) chips.append(el("span", "chip through", "Pass through"));
+  // A handhole, pedestal and so on with nothing in it: the cable just passes.
+  const holds = (p.equipment || []).some((e) => ["closure", "splitter", "terminal"].includes(e.type));
+  if (PASS_TYPES.includes(p.type) && !holds && !through.length) chips.append(el("span", "chip through", "Pass through"));
   const pc = phaseChip(p);
   if (pc) chips.prepend(pc);
   if (chips.childNodes.length) card.append(chips);
@@ -741,7 +742,7 @@ function openAddMenu(fromId, e) {
   closePanels();
   selectedId = fromId;
   const items = ADD_TYPES.map((t) => ({ icon: LOC_META[t].icon, label: typeLabel(t), run: () => {
-    if (t === "handhole") return handholeForm(fromId);
+    if (EQUIP_FIRST[t]) return equipFirstForm(t, fromId);
     addLocation(fromId, t, autoName(t));
     finish();
   } }));
@@ -809,19 +810,25 @@ function addOtherForm(fromId) {
   });
 }
 
-// A handhole usually holds a splice, so placing one offers the splice
-// case right away (ticked).
-function handholeForm(fromId) {
-  const closures = templatesFor("closure");
-  openForm(fromId ? `Add a handhole after ${point(fromId).name}` : "Place the first location: a handhole", (body, foot) => {
-    const name = inputEl("text", fromId ? autoName("handhole") : typeLabel("handhole"));
-    const spliceRow = el("label", "toggle");
-    const splice = inputEl("checkbox");
-    splice.checked = true;
-    spliceRow.append(splice, document.createTextNode("Add a splice here"));
+// A handhole or pedestal usually holds something, so placing one offers
+// it right away: a splice case (trays drawn as the case will look), a
+// splitter or a terminal, each with its own list of models.
+const EQUIP_FIRST = { handhole: "closure", pedestal: "terminal" };
+
+function equipFirstForm(type, fromId) {
+  const what = typeLabel(type).toLowerCase();
+  openForm(fromId ? `Add a ${what} after ${point(fromId).name}` : `Place the first location: a ${what}`, (body, foot) => {
+    const name = inputEl("text", fromId ? autoName(type) : typeLabel(type));
+    const kind = selectEl([
+      { value: "", label: "Nothing (pass through)" },
+      { value: "closure", label: "Splice case" },
+      { value: "splitter", label: "Splitter" },
+      { value: "terminal", label: "Terminal" },
+    ], EQUIP_FIRST[type]);
+
+    // Splice case: model, then trays and tray size.
+    const closures = templatesFor("closure");
     const template = selectEl(closures.map((t) => ({ value: t.id, label: t.label, group: t.group })));
-    const templateRow = fieldEl("Splice case", template);
-    // Trays: how many and what size, drawn as the case will look.
     const trays = inputEl("number", "", { min: 1, max: 48 });
     const size = selectEl(TRAY_SIZES.map((n) => ({ value: n, label: `${n} splices` })));
     const trayRow = el("div", "inline-fields");
@@ -852,22 +859,45 @@ function handholeForm(fromId) {
     trays.addEventListener("input", draw);
     size.addEventListener("change", draw);
     const caseBits = el("div");
-    caseBits.append(templateRow, trayRow, note, pic);
+    caseBits.append(fieldEl("Splice case", template), trayRow, note, pic);
     fromCase();
-    splice.addEventListener("change", () => (caseBits.hidden = !splice.checked));
-    body.append(fieldEl("Name", name), spliceRow, caseBits);
+
+    // Splitter: style and size. Its F2 count fills in by itself.
+    const style = selectEl(templatesFor("splitter").map((t) => ({ value: t.id, label: t.label })), "sp-bare");
+    const ratio = selectEl(SPLITTER_RATIOS.map((r) => ({ value: r, label: r })), "1x8");
+    const splitBits = el("div", "form-grid");
+    splitBits.append(fieldEl("Style", style), fieldEl("Size", ratio));
+
+    // Terminal: the model.
+    const terminal = selectEl(templatesFor("terminal").map((t) => ({ value: t.id, label: t.label, group: t.group })), "mst-8");
+    const termBits = fieldEl("Terminal", terminal);
+
+    const sync = () => {
+      caseBits.hidden = kind.value !== "closure";
+      splitBits.hidden = kind.value !== "splitter";
+      termBits.hidden = kind.value !== "terminal";
+    };
+    kind.addEventListener("change", sync);
+    sync();
+    body.append(fieldEl("Name", name), fieldEl("Put in it", kind), caseBits, splitBits, termBits);
     formButtons(foot, () => {
       if (!name.value.trim()) return "Enter a name.";
-      const t = closures.find((x) => x.id === template.value);
-      let extra = {};
-      if (splice.checked && t) {
-        const eq = fromTemplate(t, t.model);
+      let eq = null;
+      if (kind.value === "closure") {
+        const t = templateById(template.value);
+        eq = fromTemplate(t, t.model);
         eq.trays = Math.max(1, Number(trays.value) || 1);
         eq.slots = Number(size.value);
-        extra = { equipment: [eq] };
+      } else if (kind.value === "splitter") {
+        eq = { id: makeId(), type: "splitter", ratio: ratio.value, style: templateById(style.value).style,
+          name: `Splitter 1 (${ratio.value})`, f2: null, f2Manual: false };
+      } else if (kind.value === "terminal") {
+        const t = templateById(terminal.value);
+        eq = fromTemplate(t, t.model);
       }
-      if (!fromId) return void placeStart("handhole", name.value.trim(), extra);
-      addLocation(fromId, "handhole", name.value.trim(), extra);
+      const extra = eq ? { equipment: [eq] } : {};
+      if (!fromId) return void placeStart(type, name.value.trim(), extra);
+      addLocation(fromId, type, name.value.trim(), extra);
       finish();
     }, "Add");
     name.select();
