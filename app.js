@@ -216,6 +216,7 @@ const STOP_TYPES = {
 // Locations offered by the + button, in menu order.
 // "Splice" isn't offered: splicing happens at a handhole, pedestal and so
 // on. Old plans with splice locations still show them.
+const PASS_TYPES = ["handhole", "pedestal", "vault", "manhole", "other"];
 const ADD_TYPES = ["handhole", "pedestal", "vault", "manhole", "fdh", "headend"];
 
 // Standard loose-tube cable counts, and smaller counts for drops to a NID.
@@ -618,6 +619,8 @@ function stopEl(p) {
   for (const c of childCables(p.id).filter((x) => x.through)) {
     chips.append(el("span", "chip through", `${c.name} ${THROUGH_LABELS[c.through]}`));
   }
+  // A handhole, pedestal and so on with no splice case: the cable just passes.
+  if (PASS_TYPES.includes(p.type) && !closureAt(p)) chips.append(el("span", "chip through", "Pass through"));
   const pc = phaseChip(p);
   if (pc) chips.prepend(pc);
   if (chips.childNodes.length) card.append(chips);
