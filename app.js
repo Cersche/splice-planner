@@ -696,6 +696,7 @@ function openMenu(id, e) {
     if (p.type !== "nid") return openSpliceSheet(id);
     // At a home: a pointer to the name picker.
     items.push({ icon: "edit", label: "Field notes and as-built", run: () => openSpliceSheet(id) });
+    items.push({ icon: "pin", label: "Trace fiber to the start", run: () => openTrace(id) });
     items.push({ icon: "user", label: "View only: pick your name at the top to change things", run: () => {
       const pick = document.querySelector(".route-header [data-user-pick]");
       if (pick) pick.focus();
@@ -705,6 +706,7 @@ function openMenu(id, e) {
   }
   if (p.type === "nid") {
     items.push({ icon: "counts", label: "Counts (F2 / DS)", run: () => openCounts(id) });
+    items.push({ icon: "pin", label: "Trace fiber to the start", run: () => openTrace(id) });
     items.push({ icon: "edit", label: "Address / lot", run: () => renameStop(id) });
   } else if (isCabinet(p)) {
     items.push(sheetItem);
