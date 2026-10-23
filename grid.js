@@ -212,10 +212,7 @@ function drawGridLines() {
     head.style.fill = color;
     svg.append(line, head);
 
-    const label = btnEl("", (e) => {
-      e.stopPropagation();
-      openPath(path.to);
-    }, "grid-label" + (c ? "" : " empty") + (path.to === openPathId ? " selected" : ""));
+    const label = btnEl("", (e) => openLineMenu(path.to, e), "grid-label" + (c ? "" : " empty") + (path.to === openPathId ? " selected" : ""));
     label.title = `${a.name} → ${b.name}`;
     if (c) {
       label.append(el("span", "cable-name", c.name || "Cable"),

@@ -616,11 +616,12 @@ function stopEl(p) {
     if (f2) chips.append(countChip(f2Label(f2)));
     if (homeDs(p)) chips.append(countChip(homeDs(p)));
   }
-  for (const c of childCables(p.id).filter((x) => x.through)) {
+  const through = childCables(p.id).filter((x) => x.through);
+  for (const c of through) {
     chips.append(el("span", "chip through", `${c.name} ${THROUGH_LABELS[c.through]}`));
   }
   // A handhole, pedestal and so on with no splice case: the cable just passes.
-  if (PASS_TYPES.includes(p.type) && !closureAt(p)) chips.append(el("span", "chip through", "Pass through"));
+  if (PASS_TYPES.includes(p.type) && !closureAt(p) && !through.length) chips.append(el("span", "chip through", "Pass through"));
   const pc = phaseChip(p);
   if (pc) chips.prepend(pc);
   if (chips.childNodes.length) card.append(chips);

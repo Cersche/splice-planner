@@ -164,10 +164,7 @@ function pathEl(path, model) {
     for (let t = 0; t < tubeCount(c.fibers); t++) tubes.append(swatch(colorAt(t), true));
     b.append(tubes);
   }
-  b.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openPath(path.to);
-  });
+  b.addEventListener("click", (e) => openLineMenu(path.to, e));
   return b;
 }
 
@@ -566,6 +563,19 @@ function colorCodeList(n) {
     list.append(row);
   }
   return list;
+}
+
+// Tapping a line: the cable, or a handhole someone forgot, dropped in
+// the middle of the run (the cable passes through it).
+function openLineMenu(toId, e) {
+  if (isGuest()) return openPath(toId);
+  e.stopPropagation();
+  const path = incomingPath(toId);
+  const c = pathCable(path);
+  openPopup(`${point(path.from).name} → ${point(path.to).name}`, [
+    { icon: "edit", label: c ? `Cable ${c.name}` : "Path and cable", run: () => openPath(toId) },
+    { icon: "handhole", label: "Insert a pass-through handhole", run: () => insertStopForm(path) },
+  ], e);
 }
 
 // --- Add a stop on a path: A -> C becomes A -> B -> C ---
