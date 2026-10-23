@@ -338,12 +338,47 @@ function traySlots(L, keys) {
   return out;
 }
 
+// A splice case's trays as cards of slot circles. `at` maps "tray/slot"
+// to the splice key in it; onSlot makes the slots tappable.
+function trayPicture(trays, size, at = new Map(), onSlot = null, selected = null) {
+  const grid = el("div", "cx-trays");
+  for (let t = 1; t <= trays; t++) {
+    const tray = el("div", "cx-tray-card");
+    const cells = el("div", "cx-tray-slots");
+    let n = 0;
+    for (let sl = 1; sl <= size; sl++) {
+      const key = at.get(`${t}/${sl}`);
+      const cell = el(onSlot ? "button" : "span", "cx-slot" + (key ? " full" : "") + (key && key === selected ? " sel" : ""));
+      if (onSlot) {
+        cell.type = "button";
+        cell.addEventListener("click", () => onSlot(t, sl, key));
+      }
+      if (key) {
+        n++;
+        const [kind, id, sub] = key.split(":");
+        const c = kind === "fiber" && plan.cables.find((x) => x.id === id);
+        const f = c && colorCode(c.fibers)[Number(sub) - 1];
+        if (f) {
+          cell.style.background = f.fiberColor.hex;
+          if (f.fiberColor.striped) cell.classList.add("striped");
+        }
+        cell.title = `Tray ${t} slot ${sl}: ${endpointLabel(key)}`;
+      } else cell.title = `Tray ${t} slot ${sl}: empty`;
+      cells.append(cell);
+    }
+    tray.append(el("div", "cx-tray-head mono", `Tray ${t} · ${n}/${size}`), cells);
+    grid.append(tray);
+  }
+  return grid;
+}
+
 // --- Editor ---
 
 function openConnections(locId) {
   const L = point(locId);
   let picked = null; // a source or target waiting for its other end
   const opened = new Set(); // folded tubes the user opened
+  let moving = null; // a splice being moved to another tray slot
   const title = isCabinet(L) ? `Connections at ${L.name}` : closureAt(L) ? `Splice case at ${L.name}` : `Splices at ${L.name}`;
   openForm(title, (body, foot) => {
     const info = el("div", "cx-info");
@@ -370,36 +405,27 @@ function openConnections(locId) {
       if (!incomingCable(locId) && L.id !== plan.points[0].id) {
         info.append(el("p", "hint warn", `No cable reaches ${L.name} yet. You can still look around and set things up here.`));
       }
-      // The case drawn as it sits: each tray with its slots, filled ones
-      // in the fiber's color, empty ones open.
+      // The case drawn as it sits. Tap a spliced slot, then another
+      // slot, to move it there (or swap with what's there).
       if (closure) {
         const at = new Map();
         for (const [key, ts] of slots) at.set(`${ts.tray}/${ts.slot}`, key);
-        const grid = el("div", "cx-trays");
-        for (let t = 1; t <= closure.trays; t++) {
-          const tray = el("div", "cx-tray-card");
-          const cells = el("div", "cx-tray-slots");
-          let n = 0;
-          for (let sl = 1; sl <= closure.slots; sl++) {
-            const key = at.get(`${t}/${sl}`);
-            const cell = el("span", "cx-slot" + (key ? " full" : ""));
-            if (key) {
-              n++;
-              const [kind, id, sub] = key.split(":");
-              const c = kind === "fiber" && plan.cables.find((x) => x.id === id);
-              const f = c && colorCode(c.fibers)[Number(sub) - 1];
-              if (f) {
-                cell.style.background = f.fiberColor.hex;
-                if (f.fiberColor.striped) cell.classList.add("striped");
-              }
-              cell.title = `Tray ${t} slot ${sl}: ${endpointLabel(key)}`;
-            } else cell.title = `Tray ${t} slot ${sl}: empty`;
-            cells.append(cell);
+        if (moving) info.append(el("p", "hint", `Moving ${endpointLabel(moving)}: tap the slot to put it in, or tap it again to cancel.`));
+        info.append(trayPicture(closure.trays, closure.slots, at, (tray, slot, key) => {
+          if (!moving) {
+            if (key) moving = key;
+          } else if (key === moving) moving = null;
+          else {
+            L.trays = L.trays || {};
+            const from = slots.get(moving);
+            if (key && from) L.trays[key] = { tray: from.tray, slot: from.slot };
+            L.trays[moving] = { tray, slot };
+            moving = null;
+            savePlan();
+            renderRoute();
           }
-          tray.append(el("div", "cx-tray-head mono", `Tray ${t} · ${n}/${closure.slots}`), cells);
-          grid.append(tray);
-        }
-        info.append(grid);
+          render();
+        }, moving));
       }
 
       tools.innerHTML = "";

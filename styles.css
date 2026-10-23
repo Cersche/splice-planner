@@ -1776,3 +1776,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .cx-slot { aspect-ratio: 1; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.28); background: rgba(0, 0, 0, 0.25); }
 .cx-slot.full { border: 1px solid rgba(0, 0, 0, 0.5); background: var(--border-2); }
 .cx-slot.striped { background-image: repeating-linear-gradient(45deg, transparent 0 2px, #000 2px 3px); }
+button.cx-slot { padding: 0; cursor: pointer; }
+.cx-slot.sel { outline: 2px solid var(--warn); outline-offset: 1px; }
+.inline-fields { display: flex; flex-wrap: wrap; gap: 12px; margin: 6px 0; }

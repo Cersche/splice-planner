@@ -817,12 +817,51 @@ function handholeForm(fromId) {
     spliceRow.append(splice, document.createTextNode("Add a splice here"));
     const template = selectEl(closures.map((t) => ({ value: t.id, label: t.label, group: t.group })));
     const templateRow = fieldEl("Splice case", template);
-    splice.addEventListener("change", () => (templateRow.hidden = !splice.checked));
-    body.append(fieldEl("Name", name), spliceRow, templateRow);
+    // Trays: how many and what size, drawn as the case will look.
+    const trays = inputEl("number", "", { min: 1, max: 48 });
+    const size = selectEl(TRAY_SIZES.map((n) => ({ value: n, label: `${n} splices` })));
+    const trayRow = el("div", "inline-fields");
+    const a = el("label", "inline-field");
+    a.append(el("span", "", "Trays"), trays);
+    const b = el("label", "inline-field");
+    b.append(el("span", "", "Tray size"), size);
+    trayRow.append(a, b);
+    const note = el("p", "field-hint");
+    const pic = el("div");
+    const draw = () => {
+      const t = closures.find((x) => x.id === template.value);
+      const total = (Number(trays.value) || 0) * Number(size.value);
+      note.className = "field-hint" + (t && t.max && total > t.max ? " warn" : "");
+      note.textContent = t && t.max && total > t.max ? `${total} splices is over the ${t.max} this case holds.` : `${total} splices.`;
+      pic.replaceChildren(trayPicture(Math.max(1, Number(trays.value) || 1), Number(size.value)));
+    };
+    const fromCase = () => {
+      const t = closures.find((x) => x.id === template.value);
+      if (t) {
+        trays.value = t.trays;
+        if (!TRAY_SIZES.includes(t.slots)) size.append(new Option(`${t.slots} splices`, t.slots));
+        size.value = t.slots;
+      }
+      draw();
+    };
+    template.addEventListener("change", fromCase);
+    trays.addEventListener("input", draw);
+    size.addEventListener("change", draw);
+    const caseBits = el("div");
+    caseBits.append(templateRow, trayRow, note, pic);
+    fromCase();
+    splice.addEventListener("change", () => (caseBits.hidden = !splice.checked));
+    body.append(fieldEl("Name", name), spliceRow, caseBits);
     formButtons(foot, () => {
       if (!name.value.trim()) return "Enter a name.";
       const t = closures.find((x) => x.id === template.value);
-      const extra = splice.checked && t ? { equipment: [fromTemplate(t, t.model)] } : {};
+      let extra = {};
+      if (splice.checked && t) {
+        const eq = fromTemplate(t, t.model);
+        eq.trays = Math.max(1, Number(trays.value) || 1);
+        eq.slots = Number(size.value);
+        extra = { equipment: [eq] };
+      }
       if (!fromId) return void placeStart("handhole", name.value.trim(), extra);
       addLocation(fromId, "handhole", name.value.trim(), extra);
       finish();
