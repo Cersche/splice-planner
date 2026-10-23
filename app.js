@@ -1001,12 +1001,18 @@ function removeStop(id) {
   })(id);
   const extra = doomed.size - 1;
   closeMenu();
-  selectedId = null;
-  withUndo(extra ? `Removed ${p.name} and the ${extra} location${extra === 1 ? "" : "s"} fed from it.` : `Removed ${p.name}.`, () => {
-    plan.points = plan.points.filter((x) => !doomed.has(x.id));
-    plan.paths = plan.paths.filter((x) => !doomed.has(x.to));
-    plan.cables = plan.cables.filter((c) => !doomed.has(c.to));
-    plan.xconnects = plan.xconnects.filter((x) => !doomed.has(x.at));
+  openForm(`Remove ${p.name}?`, (body, foot) => {
+    if (extra) body.append(el("p", "warn", `${plural(extra, "more location")} fed from it will go too.`));
+    else body.append(el("p", "", `${typeLabel(p.type)} ${p.name} will be removed.`));
+    formButtons(foot, () => {
+      finish();
+      withUndo(extra ? `Removed ${p.name} and the ${plural(extra, "location")} fed from it.` : `Removed ${p.name}.`, () => {
+        plan.points = plan.points.filter((x) => !doomed.has(x.id));
+        plan.paths = plan.paths.filter((x) => !doomed.has(x.to));
+        plan.cables = plan.cables.filter((c) => !doomed.has(c.to));
+        plan.xconnects = plan.xconnects.filter((x) => !doomed.has(x.at));
+      });
+    }, "Remove");
   });
 }
 
