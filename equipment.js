@@ -96,20 +96,30 @@ function openEquipment(locId, startKind) {
       }
       if (eq.type === "closure") {
         const trays = inputEl("number", eq.trays, { min: 1, max: 48 });
-        const slots = inputEl("number", eq.slots, { min: 1, max: 48 });
+        const slots = el("select");
+        for (const n of new Set([...TRAY_SIZES, eq.slots].sort((x, y) => x - y))) {
+          const o = el("option", "", String(n));
+          o.value = n;
+          if (n === eq.slots) o.selected = true;
+          slots.append(o);
+        }
         const save = () => {
           eq.trays = Math.max(1, Number(trays.value) || 1);
           eq.slots = Math.max(1, Number(slots.value) || 1);
           savePlan();
           renderRoute();
+          renderList();
         };
         trays.addEventListener("change", save);
         slots.addEventListener("change", save);
         const a = el("label", "inline-field");
         a.append(el("span", "", "Trays"), trays);
         const b = el("label", "inline-field");
-        b.append(el("span", "", "Splices / tray"), slots);
+        b.append(el("span", "", "Tray size"), slots);
         row.append(a, b);
+        if (eq.max && eq.trays * eq.slots > eq.max) {
+          row.append(el("span", "field-hint warn", `${eq.trays * eq.slots} splices is over the ${eq.max} this case holds.`));
+        }
       }
       const actions = el("div", "eq-actions");
       if (hasCards(eq)) actions.append(btnEl("Edit cards and ports", () => openCards(locId, eq.id), "btn ghost"));

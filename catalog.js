@@ -107,9 +107,9 @@ const TEMPLATES = [
   { id: "inline-48", kind: "closure", group: "Generic inline", label: "Inline closure, 48 splices (4 trays)", model: "Inline closure 48", trays: 4, slots: 12, shape: "inline" },
   { id: "inline-96", kind: "closure", group: "Generic inline", label: "Inline closure, 96 splices (4 trays)", model: "Inline closure 96", trays: 4, slots: 24, shape: "inline" },
   { id: "inline-144", kind: "closure", group: "Generic inline", label: "Inline closure, 144 splices (6 trays)", model: "Inline closure 144", trays: 6, slots: 24, shape: "inline" },
-  { id: "fosc-450b", kind: "closure", group: "CommScope", label: "FOSC 450 B (approx. 144 splices)", model: "CommScope FOSC 450 B", trays: 6, slots: 24 },
-  { id: "fosc-450c", kind: "closure", group: "CommScope", label: "FOSC 450 C (approx. 288 splices)", model: "CommScope FOSC 450 C", trays: 12, slots: 24 },
-  { id: "fosc-450d", kind: "closure", group: "CommScope", label: "FOSC 450 D (approx. 576 splices)", model: "CommScope FOSC 450 D", trays: 24, slots: 24 },
+  { id: "fosc-450b", kind: "closure", group: "CommScope", label: "FOSC 450 B (max 96 splices)", model: "CommScope FOSC 450 B", trays: 4, slots: 24, max: 96 },
+  { id: "fosc-450c", kind: "closure", group: "CommScope", label: "FOSC 450 C (max 144 splices)", model: "CommScope FOSC 450 C", trays: 6, slots: 24, max: 144 },
+  { id: "fosc-450d", kind: "closure", group: "CommScope", label: "FOSC 450 D (max 432 splices)", model: "CommScope FOSC 450 D", trays: 18, slots: 24, max: 432 },
   { id: "tenio-b6", kind: "closure", group: "CommScope", label: "TENIO B6 (approx. 144 splices)", model: "CommScope TENIO B6", trays: 6, slots: 24 },
   { id: "coyote-dome", kind: "closure", group: "PLP Coyote", label: "Coyote dome (approx. 144 splices)", model: "PLP Coyote dome", trays: 6, slots: 24 },
   { id: "coyote-inline", kind: "closure", group: "PLP Coyote", label: "Coyote inline (approx. 96 splices)", model: "PLP Coyote inline", trays: 4, slots: 24, shape: "inline" },
@@ -144,7 +144,7 @@ function templateById(id) {
 // A card-based item (shelf, panel, terminal) or a closure from a template.
 function fromTemplate(t, name) {
   if (t.kind === "closure") {
-    return { id: makeId(), type: "closure", name, model: t.model, template: t.id, trays: t.trays, slots: t.slots };
+    return { id: makeId(), type: "closure", name, model: t.model, template: t.id, trays: t.trays, slots: t.slots, ...(t.max ? { max: t.max } : {}) };
   }
   const cards = [];
   for (let i = 1; i <= t.cards; i++) {

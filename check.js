@@ -84,13 +84,28 @@ function checkPlan() {
     if (closure || Object.keys(p.trays || {}).length) {
       const keys = connectionsAt(model, p.id).filter((c) => c.kind !== "patch").map((c) => c.to);
       const seen = new Map();
+      const tubeTrays = new Map();
       for (const [key, ts] of traySlots(p, keys)) {
+        const g = tubeGroup(key);
+        if (g) {
+          if (!tubeTrays.has(g)) tubeTrays.set(g, { key, trays: new Set() });
+          tubeTrays.get(g).trays.add(ts.tray);
+        }
         const at = `${ts.tray}/${ts.slot}`;
         if (seen.has(at)) problem(p.id, `Tray ${ts.tray} slot ${ts.slot} at ${p.name} holds two splices: ${endpointLabel(seen.get(at))} and ${endpointLabel(key)}.`);
         seen.set(at, key);
         if (closure && (ts.tray > closure.trays || ts.slot > closure.slots)) {
           problem(p.id, `${closure.name} at ${p.name} has ${closure.trays} trays of ${closure.slots}, but a splice is in tray ${ts.tray} slot ${ts.slot}.`);
         }
+      }
+      // Don't jump trays: one tube's splices belong in one tray.
+      for (const { key, trays } of tubeTrays.values()) {
+        if (trays.size > 1) {
+          problem(p.id, `Tray jump at ${p.name}: the tube holding ${endpointLabel(key)} is spliced across trays ${[...trays].sort((x, y) => x - y).join(", ")}. Keep a tube in one tray.`);
+        }
+      }
+      if (closure && closure.max && keys.length > closure.max) {
+        problem(p.id, `${closure.name} at ${p.name} holds at most ${closure.max} splices, but ${keys.length} are planned.`);
       }
     }
 
